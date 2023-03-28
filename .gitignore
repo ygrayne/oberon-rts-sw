@@ -1,0 +1,25 @@
+
+*.code-workspace
+
+## ignore all
+/*
+
+# add .gitgnore
+!.gitignore
+
+## add dirs
+!/lib/
+!/orig/
+!/system/
+
+/lib/epo/*
+/lib/rts/*
+/lib/platform/x/*
+/lib/gen/*
+/lib/system/x/*
+
+# add/exclude module files
+!*.mod
+*.rsc
+*.smb
+*.lst
