@@ -1,5 +1,10 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
               (*CB 01.08.2017*)
+(**
+  Changes by Gray, gray@grayraven.org
+  2020-05: * Writer, Write
+  2021-04: * WriteClock output changed to ISO format
+**)
 
   IMPORT SYSTEM;
 
@@ -31,7 +36,21 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
       s*: ARRAY 32 OF CHAR;
     END;
 
-    Writer* = RECORD buf*: ARRAY 2 OF CHAR END;
+
+    TextDevice* = POINTER TO TextDeviceDesc;
+    TextDeviceDesc* = RECORD END;
+    PutCharProc* = PROCEDURE(dev: TextDevice; ch: CHAR);
+    Writer* = RECORD
+      device: TextDevice;
+      putChar: PutCharProc
+    END;
+
+  PROCEDURE OpenWriter*(VAR W: Writer; dev: TextDevice; pcp: PutCharProc);
+  BEGIN
+    W.device := dev;
+    W.putChar := pcp
+  END OpenWriter;
+
 
   (* ------------------ Access: Scanners (NW) ------------------------- *)
 
@@ -129,7 +148,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
           IF neg THEN S.i := -n ELSE S.i := n END;
           IF hex THEN S.class := Inval ELSE S.class := Int END
         END
-      ELSE (*spectal character*) S.class := Char;
+      ELSE (*special character*) S.class := Char;
         IF neg THEN S.c := "-" ELSE S.c := ch; Read(S, ch) END
       END
     END ;
@@ -137,15 +156,13 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
   END Scan;
 
   PROCEDURE Write* (VAR W: Writer; ch: CHAR);
-  CONST
-    data = -56; stat = -52;
   BEGIN
-    REPEAT UNTIL SYSTEM.BIT(stat, 1);
-    SYSTEM.PUT(data, ORD(ch))
+    W.putChar(W.device, ch)
   END Write;
 
   PROCEDURE WriteLn* (VAR W: Writer);
-  BEGIN Write(W, LF)
+  BEGIN
+    Write(W, LF)
   END WriteLn;
 
   PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
@@ -184,7 +201,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
  PROCEDURE WriteReal* (VAR W: Writer; x: REAL; n: INTEGER);
     VAR e, i, m: INTEGER;
       d: ARRAY 16 OF CHAR;
-  BEGIN e := ASR(SYSTEM.VAL(INTEGER,x), 23) MOD 100H;  (*binary exponent*)
+  BEGIN e := ASR(SYSTEM.VAL(INTEGER, x), 23) MOD 100H;  (*binary exponent*)
     IF e = 0 THEN
       WriteString(W, "  0 ");
       WHILE n >= 3 DO Write(W, " "); DEC(n) END
@@ -228,18 +245,29 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     END
   END WriteRealFix;
 
+(*
   PROCEDURE WritePair(VAR W: Writer; ch: CHAR; x: LONGINT);
-  BEGIN Write(W, ch);
+  BEGIN
+    Write(W, ch);
+    Write(W, CHR(x DIV 10 + 30H)); Write(W, CHR(x MOD 10 + 30H))
+  END WritePair;
+*)
+
+  PROCEDURE WritePair(VAR W: Writer; ch: CHAR; x: LONGINT);
+  BEGIN
+    Write(W, ch);
+    IF x >= 2000 THEN Write(W, CHR(32H)); Write(W, CHR(30H)); DEC(x, 2000) END;
     Write(W, CHR(x DIV 10 + 30H)); Write(W, CHR(x MOD 10 + 30H))
   END WritePair;
 
   PROCEDURE WriteClock* (VAR W: Writer; d: LONGINT);
   BEGIN
-    WritePair(W, " ", d DIV 20000H MOD 20H);   (*day*)
-    WritePair(W, ".", d DIV 400000H MOD 10H); (*month*)
-    WritePair(W, ".", d DIV 4000000H MOD 40H);   (*year*)
+    WritePair(W, " ", 2000 + (d DIV 4000000H MOD 40H));   (*year*)
+    WritePair(W, "-", d DIV 400000H MOD 10H); (*month*)
+    WritePair(W, "-", d DIV 20000H MOD 20H);   (*day*)
     WritePair(W, " ", d DIV 1000H MOD 20H);   (*hour*)
     WritePair(W, ":", d DIV 40H MOD 40H);  (*min*)
     WritePair(W, ":", d MOD 40H)  (*sec*)
   END WriteClock;
+
 END Texts.

@@ -1,207 +1,176 @@
+(**
+  Entry point for the outer core of the system, loaded my Modules.
+  --
+  Based on EO and PO Oberon
+  (*JG 6.9.90 / 23.9.93 / 13.8.94 *)
+  (*NW 14.4.2013 / 22.12.2013 *)
+  (*CB 01/07/2019 *)
+  --
+  Adaptations and changes by
+  2020 - 2021 by Gray, gray@grayraven.org
+  https://oberon-rts.org/licences
+**)
+
 MODULE Oberon;
-(*JG 6.9.90 / 23.9.93 / 13.8.94 *)
-(*NW 14.4.2013 / 22.12.2013 *)
-(*CFB Software 2019-2021*)
-  IMPORT SYSTEM, Texts, Files, Input, Kernel, Modules, Upload;
+
+  IMPORT
+    Procs := Processes, Modules, Files, Kernel, Cmds, Errors, Log, SPIdev;
 
   CONST
-    off = 0; idle = 1; active = 2;   (*task states*)
-    BasicCycle = 20;
-    REC = 21X;
+    SP = 14;
 
-  TYPE
-    Task* = POINTER TO TaskDesc;
+    (* RTC connection *)
+    RTCspiDevice = SPIdev.Dev0; (* unbuffered, shared with SD card *)
+    RTCchipselect = 1;
 
-    Handler* = PROCEDURE;
-
-    TaskDesc* = RECORD
-      state, nextTime, period*: INTEGER;
-      next: Task;
-      handle: Handler
-    END;
-
-    ParDesc* = RECORD
-      text*: Texts.Text;
-      pos*: LONGINT
-    END;
+    (* GC process config *)
+    GCperiod = 7;
+    GCid = "gc";
+    GCprio = 0;
+    GCptype = Procs.SystemProc;
+    GCstackSize = 512;
+    GCstackHot = 0;
+    GClimitDiv = 4; (* kick in when only 1/4 of heap space is left *)
 
   VAR
-    NofTasks*: INTEGER;
-    Par*: ParDesc;
-    W: Texts.Writer;
+    (* EO compatibility, eg. as used by System *)
+    Par*: Cmds.ParRef;
+    Call*: PROCEDURE(name: ARRAY OF CHAR; VAR res: INTEGER);
 
-    CurTask: Task;
-    ActCnt: INTEGER; (*action count for GC*)
-    Mod: Modules.Module;
+    (* GC *)
+    gc: Procs.Process;
+    gcstack: ARRAY GCstackSize OF BYTE;
+    gcCount, heapSize, GClimit*: INTEGER;
 
-  PROCEDURE WriteLine(s: ARRAY OF CHAR);
+
+  PROCEDURE Clock*(): INTEGER;
+    VAR x: INTEGER;
   BEGIN
-    Texts.WriteString(W, s);
-    Texts.WriteLn(W)
-  END WriteLine;
-
-  PROCEDURE WriteError(res: INTEGER; command: ARRAY OF CHAR);
-  BEGIN
-    Texts.WriteLn(W);
-    Texts.WriteString(W, "Command: ");
-    WriteLine(command);
-    Texts.WriteLn(W);
-    IF res IN {1..4} THEN
-      Texts.WriteString(W, "Importing: ");
-      WriteLine(Modules.errName)
-    END;
-    Texts.WriteString(W, "Error ");
-    Texts.WriteInt(W, res, 0);
-    Texts.WriteString(W, ": ");
-    IF res = 1 THEN
-      WriteLine("File not found")
-    ELSIF res = 2 THEN
-      WriteLine("Import error")
-    ELSIF res = 3 THEN
-      WriteLine("Inconsistent import key")
-    ELSIF res = 4 THEN
-      WriteLine("Corrupted object file")
-    ELSIF res = 5 THEN
-      WriteLine("Unknown command")
-    ELSIF res = 7 THEN
-      WriteLine("Insufficient free memory")
-    ELSE
-      WriteLine("Unspecified")
-    END
-  END WriteError;
-
-  PROCEDURE Clock*(): LONGINT;
-  BEGIN RETURN Kernel.Clock()
+    x := Kernel.Clock()
+    RETURN x
   END Clock;
 
-  PROCEDURE SetClock* (d: LONGINT);
-  BEGIN Kernel.SetClock(d)
+
+  PROCEDURE SetClock* (d: INTEGER);
+  BEGIN
+    Kernel.SetClock(d)
   END SetClock;
 
-  PROCEDURE Time*(): LONGINT;
-  BEGIN RETURN Kernel.Time()
+
+  PROCEDURE Time*(): INTEGER;
+  BEGIN
+    RETURN Kernel.Time()
   END Time;
 
-  (*command interpretation*)
-  PROCEDURE Call* (name: ARRAY OF CHAR; VAR res: INTEGER);
-    VAR mod: Modules.Module; P: Modules.Command;
-      i, j: INTEGER; ch: CHAR;
-      Mname, Cname: ARRAY 32 OF CHAR;
-  BEGIN i := 0; ch := name[0];
-    WHILE (ch # ".") & (ch # 0X) DO Mname[i] := ch; INC(i); ch := name[i] END ;
-    IF ch = "." THEN
-      Mname[i] := 0X; INC(i);
-      Modules.Load(Mname, mod); res := Modules.res;
-      IF Modules.res = 0 THEN
-        j := 0; ch := name[i]; INC(i);
-        WHILE (ch # 0X) & (ch # " ") DO Cname[j] := ch; INC(j); ch := name[i]; INC(i) END ;
-        Cname[j] := 0X;
-        P := Modules.ThisCommand(mod, Cname); res := Modules.res;
-        IF Modules.res = 0 THEN P END
-      END
-    ELSE
-      res := 5
-    END
-  END Call;
 
-  PROCEDURE GC;
-    VAR mod: Modules.Module;
-      heapSize: INTEGER;
+  (* garbage collector *)
+  PROCEDURE collect;
+    VAR mod: Modules.Module; alloc, time: INTEGER; le: Log.Entry;
   BEGIN
-    heapSize := Kernel.heapLim - Kernel.heapOrg;
-    IF (ActCnt <= 0) OR (Kernel.allocated >= heapSize - (heapSize DIV 8)) THEN
-      mod := Modules.root; LED(21H);
-      WHILE mod # NIL DO
-        IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END ;
-        mod := mod.next
-      END ;
-      LED(23H);
-      Files.RestoreList; LED(27H);
-      Kernel.Scan; LED(20H);
-      ActCnt := BasicCycle
-    END
-  END GC;
-
-  PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
-    VAR t: Task;
-  BEGIN NEW(t); t.state := off; t.next := t; t.handle := h; t.period := period; RETURN t
-  END NewTask;
-
-  PROCEDURE Install* (T: Task);
-  BEGIN
-    IF T.state = off THEN
-      T.next := CurTask.next; CurTask.next := T; T.state := idle; T.nextTime := 0; INC(NofTasks)
-    END
-  END Install;
-
-  PROCEDURE Remove* (T: Task);
-    VAR t: Task;
-  BEGIN
-    IF T.state # off THEN t := T;
-      WHILE t.next # T DO t := t.next END ;
-      t.next := T.next; T.state := off; T.next := NIL; CurTask := t; DEC(NofTasks)
-    END
-  END Remove;
-
-  PROCEDURE Collect* (count: INTEGER);
-  BEGIN ActCnt := count
-  END Collect;
-
-  PROCEDURE GetCommand(ch: CHAR);
-  VAR
-    i: INTEGER;
-  BEGIN
-    i := 0;
-    WHILE (ch # 0AX) DO
-      IF ch >= " " THEN
-        Par.text.string[i] := ch;
-        INC(i)
-      END;
-      Input.Read(ch)
+    alloc := Kernel.allocated;
+    time := Procs.Time();
+    mod := Modules.root; LED(21H);
+    WHILE mod # NIL DO
+      IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END;
+      mod := mod.next
     END;
-    Par.text.string[i] := 0X;
-    Par.text.len := i
-  END GetCommand;
+    LED(23H);
+    Files.RestoreList; LED(27H);
+    Kernel.Scan; LED(20H);
+    le.event := Log.System; le.cause := Log.SysCollect; le.more0 := Time() - time;
+    le.more1 := alloc; le.more2 := Kernel.allocated;
+    (***
+    Log.Put(le)
+    *)
+  END collect;
 
-  PROCEDURE Loop*;
-    VAR t, res: INTEGER;
-      ch: CHAR;
+  PROCEDURE gcc;
   BEGIN
-    WriteLine("Embedded Project Oberon 07.10.2021");
+    Procs.SetPeriod(GCperiod);
     REPEAT
-      IF Input.Available() > 0 THEN
-        Input.Read(ch);
-        IF ch = REC THEN
-          Upload.Run()
-        ELSE
-          GetCommand(ch);
-          IF Par.text.string[0] # 0X THEN
-            Call(Par.text.string, res);
-            IF res # 0 THEN
-              WriteError(res, Par.text.string)
-            END
-          END
-        END;
-        DEC(ActCnt)
-      ELSE
-        CurTask := CurTask.next; t := Kernel.Time();
-        IF (CurTask.nextTime - t) <= 0 THEN
-          CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
-        END
+      Procs.Next;
+      IF (gcCount = 0) OR (Kernel.allocated >= GClimit) THEN
+        collect;
+        gcCount := 1;
       END
     UNTIL FALSE
-  END Loop;
+  END gcc;
 
-  PROCEDURE Reset*;
+  PROCEDURE installGC;
+    VAR res: INTEGER;
   BEGIN
-    IF CurTask.state = active THEN Remove(CurTask) END ;
-    SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) Loop
-  END Reset;
+    heapSize := Kernel.heapLim - Kernel.heapOrg;
+    GClimit := heapSize - (heapSize DIV GClimitDiv);
+    gcCount := 1;
+    NEW(gc);
+    Procs.Init(gc, gcc, gcstack, GCstackHot, GCptype, GCprio, GCid);
+    Procs.Install(gc, res)
+  END installGC;
+
+
+  PROCEDURE Collect*;
+  BEGIN
+    gcCount := 0
+  END Collect;
+
+  (* start-up stuff *)
+
+  (***
+  PROCEDURE logRestart;
+    VAR le: Log.Entry;
+  BEGIN
+    le.event := Log.System; le.cause := Log.SysRestart;
+    SysCtrl.GetReg(le.more0);
+    SysCtrl.GetRestartCause(le.more1);
+    SysCtrl.GetErrorState(le.more2);
+    Log.Put(le);
+    le.event := Log.System;
+    IF RTC.Installed THEN
+      le.cause := Log.SysRTCinst; le.more0 := RTCspiDevice; le.more1 := RTCchipselect
+    ELSE
+      le.event := Log.System; le.cause := Log.SysRTCnotinst
+    END;
+    Log.Put(le)
+  END logRestart;
+
+
+  PROCEDURE logMemData(SP: INTEGER);
+    VAR x: INTEGER; le: Log.Entry;
+  BEGIN
+    le.event := Log.System; le.cause := Log.SysMemStart;
+    (***
+    StackMonitor.GetMax(x);
+    *)
+    x := 0;
+    le.more0 := Kernel.stackOrg - x; (* startup stack used *)
+    le.more1 := Kernel.stackOrg - SP; (* stack pointer before loading cmds *)
+    le.more2 := Kernel.allocated;  (* startup heap used *)
+    Log.Put(le)
+  END logMemData;
+  *)
 
 BEGIN
-  ActCnt := 0;
-  NEW(Par.text);
-  CurTask := NewTask(GC, 1000); Install(CurTask);
-  Modules.Load("System", Mod); Mod := NIL;
-  Loop
+  (* entry point for the outer core, loaded by Modules *)
+  (* the temp trap handler is still installed *)
+  (* no abort interrupts and abort handler are installed *)
+  LED(0AAH); (* light show just for the effect *)
+  Par := Cmds.Par; Call := Cmds.Call; (* EO command handling compatibility *)
+  (***
+  RTC.Install(RTCspiDevice, RTCchipselect); (* needed for logging *)
+  logRestart;
+  *)
+  installGC;
+  Procs.InstallAudit;
+  (***
+  logMemData(SYSTEM.REG(SP));
+  *)
+  Cmds.Install;
+  (* from here, cmds will use most of the original stack, the scheduler (Loop) only keeps a small part
+  at the top, see Procs.SchedulerStackSize *)
+  Errors.Install; (* installs trap and abort handlers, as well as error interrupt handlers *)
+  (*Console.WriteLine(""); Console.WriteLine(RTSversion);*)
+  (*Calltrace.Select(0);*)
+  collect; (* make sure we have all heap space available for startup loading by Cmds *)
+  Procs.Go (* start scheduler *)
+  (* we'll not return here *)
 END Oberon.

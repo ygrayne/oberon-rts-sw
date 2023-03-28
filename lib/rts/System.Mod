@@ -1,7 +1,20 @@
 MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
-  (* CFB 28.04.2018 Added RTC. *)
-  (* CFB 05.08.2020 Changed date format and validated date *)
-  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Texts, Oberon, RTC;
+  (* CFB 28.4.2018 Added RTC. *)
+(**
+  Changes by Gray, gray@grayraven.org
+  2020-05: * Texts.Writer writes to console
+  2020-08: * Astrobe for RISC5, August 2020, compatible
+  2020-11: * added data size, code size, and total module mem usage to ShowModules
+  2021-03: * added command 'ShowProcesses'
+           * moved abort and trap handlers to 'Errors'
+  2021-04: * fixed System.Date
+           * extended System.Watch with total numbers
+  2021-05: * extended System.Watch with scheduler run-time data
+           * extended System.ShowProcesses with process run-time data
+  2021-10: * Date changed to v8.0 variant, with correction
+**)
+
+  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Texts, Oberon, Console := ConsoleC, Procs := Processes;
 
   VAR
     W: Texts.Writer;
@@ -35,27 +48,32 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
   (* ------------- Toolbox for system control ---------------*)
 
   PROCEDURE Date*;
-    VAR S: Texts.Scanner;
-      dt, hr, min, sec, yr, mo, day: LONGINT;
+    VAR
+      S: Texts.Scanner;
+      arg: ARRAY 6 OF LONGINT; (* day, month, year, hour, mins, secs *)
+      dt, i: LONGINT;
   BEGIN
-    Texts.WriteString(W, "System.Date ");
-    Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
-    IF S.class = Texts.Int THEN (*set clock*)
-      day := S.i; Texts.Scan(S); mo := S.i; Texts.Scan(S); yr := S.i; Texts.Scan(S);
-      hr := S.i; Texts.Scan(S); min := S.i; Texts.Scan(S); sec := S.i;
-      IF (day >= 1) & (day <= 31) & (mo >= 1) & (mo <= 12) & (yr >= 0) & (yr <= 63) THEN
-        dt := ((((yr*16 + mo)*32 + day)*32 + hr)*64 + min)*64 + sec;
-        Kernel.SetClock(dt)
-      END
-    ELSE (*read clock*)
-      dt := Oberon.Clock()
+    Texts.WriteString(W, "System.Date"); EndLine;
+    Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos);
+    Texts.Scan(S);
+    i := 0;
+    WHILE (S.class = Texts.Int) & (i < 6) DO
+      arg[i] := S.i; Texts.Scan(S); INC(i)
     END;
+    IF i = 6 THEN
+      IF (arg[0] >= 1) & (arg[0] <= 31) & (arg[1] >= 1) & (arg[1] <= 12) & (arg[2] >= 0) & (arg[2] <= 63)
+        & (arg[3] >= 0) & (arg[3] <= 23) & (arg[4] >= 0) & (arg[4] <= 59) & (arg[5] >= 0) & (arg[5] <= 59) THEN
+        dt := ((((arg[2]*16 + arg[1])*32 + arg[0])*32 + arg[3])*64 + arg[4])*64 + arg[5];
+        Oberon.SetClock(dt)
+      END
+    END;
+    dt := Oberon.Clock();
     Texts.WriteClock(W, dt); EndLine
   END Date;
 
   PROCEDURE Collect*;
   BEGIN Texts.WriteString(W, "System.Collect"); EndLine;
-    Oberon.Collect(0)
+    Oberon.Collect
   END Collect;
 
   (* ------------- Toolbox for module management ---------------*)
@@ -68,12 +86,11 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
   END Free1;
 
   PROCEDURE Free*;
-  VAR
-    S: Texts.Scanner;
+  VAR S: Texts.Scanner;
   BEGIN Texts.WriteString(W, "System.Free"); EndLine;
     Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     WHILE S.class = Texts.Name DO Free1(S); Texts.Scan(S) END;
-    Oberon.Collect(0)
+    Oberon.Collect
   END Free;
 
   (* ------------- Toolbox of file system ---------------*)
@@ -135,7 +152,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
   BEGIN GetArg(S);
     Texts.WriteString(W, "System.CopyFiles"); EndLine;
     WHILE S.class = Texts.Name DO
-    name := S.s; Texts.Scan(S);
+      name := S.s; Texts.Scan(S);
       IF (S.class = Texts.Char) & (S.c = "=") THEN Texts.Scan(S);
         IF (S.class = Texts.Char) & (S.c = ">") THEN Texts.Scan(S);
           IF S.class = Texts.Name THEN
@@ -227,32 +244,109 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
 
     (* ------------- Toolbox for system inspection ---------------*)
 
+  PROCEDURE microSeconds(clockCycles: INTEGER): INTEGER;
+    CONST ZeroOutLimit = 7FFFFFFFH DIV 64; (* clock period can be max 64 *)
+    VAR us: INTEGER;
+  BEGIN
+    IF clockCycles < ZeroOutLimit THEN
+      us := (clockCycles * Procs.ClockPeriod) DIV 1000
+    ELSE
+      us := (clockCycles DIV 1000) * Procs.ClockPeriod
+    END
+    RETURN us
+  END microSeconds;
+
+
   PROCEDURE Watch*;
-  BEGIN Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
-    Texts.WriteString(W, "  Modules space "); Texts.WriteInt(W, Modules.AllocPtr, 8);
-    Texts.WriteInt(W, Modules.AllocPtr * 100 DIV Kernel.heapOrg, 4); Texts.Write(W, "%"); EndLine;
-    Texts.WriteString(W, "  Heap space    "); Texts.WriteInt(W, Kernel.allocated, 8);
+  BEGIN
+    Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
+    Texts.WriteString(W, "  Clock freq    "); Texts.WriteInt(W, Procs.ClockFreq, 8); Texts.WriteInt(W, Procs.ClockPeriod, 8); EndLine;
+    Texts.WriteString(W, "  Total RAM     "); Texts.WriteInt(W, Kernel.MemLim, 8); EndLine;
+    Texts.WriteString(W, "  Modules space "); Texts.WriteInt(W, Kernel.heapOrg - Kernel.stackSize, 8);
+    Texts.WriteInt(W, Modules.AllocPtr, 8);
+    Texts.WriteInt(W, Modules.AllocPtr * 100 DIV (Kernel.heapOrg - Kernel.stackSize), 4); Texts.Write(W, "%"); EndLine;
+    Texts.WriteString(W, "  Heap space    "); Texts.WriteInt(W, Kernel.heapLim - Kernel.heapOrg, 8);
+    Texts.WriteInt(W, Kernel.allocated, 8);
     Texts.WriteInt(W, Kernel.allocated * 100 DIV (Kernel.heapLim - Kernel.heapOrg), 4); Texts.Write(W, "%"); EndLine;
-    Texts.WriteString(W, "  Disk sectors  "); Texts.WriteInt(W, Kernel.NofSectors, 8);
+    Texts.WriteString(W, "  Disk sectors  "); Texts.WriteInt(W, 10000H, 8);
+    Texts.WriteInt(W, Kernel.NofSectors, 8);
     Texts.WriteInt(W, Kernel.NofSectors * 100 DIV 10000H, 4); Texts.Write(W, "%"); EndLine;
-    Texts.WriteString(W, "  Tasks         "); Texts.WriteInt(W, Oberon.NofTasks, 8); EndLine
+    Texts.WriteString(W, "  Procs         "); Texts.WriteInt(W, Procs.NumProcs, 8); EndLine;
+    Texts.WriteString(W, "  MemLim       "); Texts.WriteHex(W, Kernel.MemLim); EndLine;
+    Texts.WriteString(W, "  stackOrg     "); Texts.WriteHex(W, Kernel.stackOrg); EndLine;
+    Texts.WriteString(W, "  stackSize    "); Texts.WriteHex(W, Kernel.stackSize);  Texts.WriteInt(W, Kernel.stackSize, 8); EndLine;
+    Texts.WriteString(W, "  GC limit      "); Texts.WriteInt(W, Oberon.GClimit, 8); EndLine;
+    Texts.WriteString(W, "  Eval          ");
+    Texts.WriteInt(W, microSeconds(Procs.Eval), 8);
+    Texts.WriteInt(W, microSeconds(Procs.MaxEval), 8); EndLine;
+    Texts.WriteString(W, "  Exec          ");
+    Texts.WriteInt(W, microSeconds(Procs.Exec), 8); Texts.WriteInt(W, microSeconds(Procs.MaxExec), 8); EndLine;
+    Texts.WriteString(W, "  Eval/Exec     "); Texts.WriteInt(W, (Procs.Eval * 1000) DIV Procs.Exec, 8);
+    Texts.WriteInt(W, (Procs.MaxEval * 1000) DIV Procs.MaxExec, 8); EndLine
   END Watch;
 
   PROCEDURE ShowModules*;
-    VAR M: Modules.Module;
+    VAR
+      M: Modules.Module;
+      total: INTEGER;
+  BEGIN
+    Texts.WriteString(W, "System.ShowModules"); EndLine;
+    M := Modules.root;      (* address of last module loaded *)
+    (*m := Modules.AllocPtr;  (* address of next free mem beyond Module.root *)*)
+    Texts.WriteString(W, "  name"); Pad(4, 21);
+    Texts.WriteString(W, "base adr");
+    Texts.WriteString(W, " code adr");
+    Texts.WriteString(W, " code end");
+    Texts.WriteString(W, "  data");
+    Texts.WriteString(W, "  code");
+    Texts.WriteString(W, "  slot");
+    Texts.WriteString(W, "  refs");
+    Texts.WriteString(W, "   num");
+    Texts.WriteLn(W);
+    total := 0;
+    WHILE M # NIL DO
+        Texts.WriteString(W, "  ");
+        IF M.name[0] = 0X THEN
+          Texts.WriteString(W, "---"); Pad(3, 20);
+        ELSE
+          Texts.WriteString(W, M.name); Pad(Length(M.name), 20);
+        END;
+        Texts.WriteHex(W, SYSTEM.VAL(INTEGER, M));  (* base address of module *)
+        Texts.WriteHex(W, M.code);                  (* start address of code segment *)
+        Texts.WriteHex(W, M.imp);                   (* end address of code segment *)
+        Texts.WriteInt(W, M.code - M.data, 6);      (* size of data segment *)
+        Texts.WriteInt(W, M.imp - M.code, 6);       (* size of code segment *)
+        INC(total, M.size);
+        Texts.WriteInt(W, M.size, 6);               (* total size of module slot, can be larger than module size*)
+        Texts.WriteInt(W, M.refcnt, 6);
+        Texts.WriteInt(W, M.num, 6);
+      (*
+      ELSE
+        Texts.WriteString(W, "  ---")
+      END ;
+      *)
+      Texts.WriteLn(W); (*m := ORD(M);*) M := M.next
+    END;
+    Pad(0, 44); Texts.WriteString(W, "total");
+    Texts.WriteInt(W, total, 18); Texts.WriteLn(W)
+  END ShowModules;
+(*
+  PROCEDURE ShowModules*;
+    VAR T: Texts.Text;
+    M: Modules.Module;
   BEGIN
     Texts.WriteString(W, "System.ShowModules"); EndLine;
     M := Modules.root;
     WHILE M # NIL DO
       IF M.name[0] # 0X THEN
-        Texts.WriteString(W, M.name); Pad(Length(M.name), 20); Texts.WriteHex(W, SYSTEM.VAL(INTEGER, M));
+        Texts.WriteString(W, M.name); Pad(Length(M.name), 20); Texts.WriteHex(W, ORD(M));
         Texts.WriteHex(W, M.code); Texts.WriteInt(W, M.refcnt, 4)
       ELSE Texts.WriteString(W, "---")
       END ;
       Texts.WriteLn(W); M := M.next
     END
-  END ShowModules;
-
+  END ShowModules
+*)
   PROCEDURE ShowCommands*;
     VAR M: Modules.Module;
       comadr: INTEGER; ch: CHAR;
@@ -275,26 +369,56 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
     END
   END ShowCommands;
 
-  PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
-    VAR u, v, w: INTEGER; mod: Modules.Module;
-  BEGIN u := SYSTEM.REG(15); SYSTEM.GET(u - 4, v); w := v DIV 10H MOD 10H; (*trap number*)
-    IF w = 0 THEN Kernel.New(a, b)
-    ELSE (*trap*) Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteInt(W, v DIV 100H MOD 10000H, 4);
-      Texts.WriteString(W, "  TRAP"); Texts.WriteInt(W, w, 4); mod := Modules.root;
-      WHILE (mod # NIL) & ((u < mod.code) OR (u >= mod.imp)) DO mod := mod.next END ;
-      IF mod # NIL THEN Texts.WriteString(W, " in "); Texts.WriteString(W, mod.name) END ;
-      Texts.WriteString(W, " at"); Texts.WriteHex(W, u);
-      Texts.WriteLn(W); Oberon.Reset
-    END
-  END Trap;
 
-  PROCEDURE Abort;
-    VAR n: INTEGER;
-  BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, n);
-    Texts.WriteLn(W); Oberon.Reset
-  END Abort;
+  PROCEDURE ShowProcesses*;
+    VAR j: INTEGER; p0: Procs.Process; pd: Procs.ProcessData; td: ARRAY Procs.NumTimers OF INTEGER;
+  BEGIN
+    Texts.WriteString(W, "System.ShowProcesses"); Texts.WriteLn(W);
+    NEW(pd);
+    Texts.WriteString(W, "  id "); Texts.WriteString(W, "  ty"); Texts.WriteString(W, "  pr");
+    Texts.WriteString(W, "  tm"); Texts.WriteString(W, "   n"); Texts.WriteString(W, "  st");
+    Texts.WriteString(W, "    rt"); Texts.WriteString(W, "     rtm"); Texts.WriteString(W, "  ov");
+    Texts.WriteString(W, "  cn");
+    Texts.WriteString(W, "    stk adr"); Texts.WriteString(W, "    size"); Texts.WriteString(W, "     hot");
+    Texts.WriteString(W, "    used"); Texts.WriteString(W, "  unused");
+    Texts.WriteLn(W);
+    p0 := NIL;
+    Procs.GetProcData(p0, pd);
+    WHILE p0 # NIL DO
+      Texts.WriteString(W, "  ");
+      Texts.WriteString(W, pd.id);
+      j := 0; WHILE pd.id[j] # 0X DO INC(j) END;
+      WHILE j < Procs.IdLen-1 DO Texts.WriteString(W, " "); INC(j) END;
+      Texts.WriteInt(W, pd.ptype, 4);
+      Texts.WriteInt(W, pd.prio, 4); Texts.WriteInt(W, pd.period, 4);
+      Texts.WriteInt(W, pd.pn, 4);
+      Texts.WriteInt(W, pd.state, 4);
+      Texts.WriteInt(W, microSeconds(pd.runTime), 6);
+      Texts.WriteInt(W, microSeconds(pd.maxRunTime), 8);
+      Texts.WriteInt(W, pd.ovflCnt, 4); Texts.WriteInt(W, pd.cn, 4);
+      Texts.WriteString(W, "  "); Texts.WriteHex(W, pd.stackAdr); (* stack address *)
+      Texts.WriteInt(W, pd.stackSize, 8); (* stack size *)
+      Texts.WriteInt(W, pd.stackHotSize, 8); (* stack hot size *)
+      Texts.WriteInt(W, pd.stackAdr + pd.stackSize - pd.stackMax, 8); (* stack used *)
+      Texts.WriteInt(W, pd.stackMax - pd.stackAdr, 8); (* stack unused *)
+      Texts.WriteLn(W);
+      Procs.GetProcData(p0, pd)
+    END;
+    Procs.GetSchedulerData(pd);
+    Texts.WriteString(W, "  scheduler                              ");
+    Texts.WriteInt(W, pd.cn, 6); Texts.WriteString(W, "  ");
+    Texts.WriteHex(W, pd.stackAdr); Texts.WriteInt(W, pd.stackSize, 8); Texts.WriteInt(W, pd.stackHotSize, 8);
+    Texts.WriteInt(W, pd.stackAdr + pd.stackSize - pd.stackMax, 8);
+    Texts.WriteInt(W, pd.stackMax - pd.stackAdr, 8);
+    Texts.WriteLn(W); Texts.WriteLn(W);
+    Procs.GetTimerData(td);
+    Texts.WriteString(W, "  timers: ");
+    FOR j := 0 TO Procs.NumTimers - 1 DO
+      Texts.Write(W, "t"); Texts.WriteInt(W, j, 0); Texts.WriteString(W, ": "); Texts.WriteInt(W, td[j], 0); Texts.WriteString(W, "  ")
+    END;
+    Texts.WriteLn(W)
+  END ShowProcesses;
 
 BEGIN
-  RTC.Install();
-  Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0)
+  W := Console.C
 END System.
