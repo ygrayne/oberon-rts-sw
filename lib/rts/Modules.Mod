@@ -1,22 +1,53 @@
 MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
-  IMPORT SYSTEM, Files;
-  CONST versionkey = 1X; MT = 12; DescSize = 80;
+
+  (* gray 2021-04: stack size is read from Kernel.stackSize *)
+  (* gray 2021-05: Free: remove all freed module slots on the top of the module list *)
+  (* gray 2022-01: Load: print loading progress *)
+  (* gray 2022-01: Load: check for too may imports *)
+  (* gray 2022-01: Result codes as CONST *)
+  (* gray 2023-03: Use DebugOut for printing loading progress *)
+
+  IMPORT SYSTEM, Files, Kernel, DebugOut; (* gray: import Kernel for stack size *)
+
+  CONST
+    versionkey = 1X; MT = 12; DescSize = 80;
+
+    (* result codes *)
+    (* Load *)
+    ResOK* = 0;
+    ResFileNotFound* = 1;
+    ResImpErr* = 2;
+    ResKeyInconsistent* = 3;
+    ResFileCorrupt* = 4;
+    ResTooManyImp* = 6;
+    ResNoMem* = 7;
+
+    (* ThisCommand *)
+    ResCmdUnknown* = 5;
+
+    (* Free *)
+    ResRefCntNotZero* = 1;
+
+    (* Check *)
+    ResModNameNotValid = 1;
+
 
   TYPE Module* = POINTER TO ModDesc;
     Command* = PROCEDURE;
     ModuleName* = ARRAY 32 OF CHAR;
 
     ModDesc* = RECORD
-        name*: ModuleName;
-        next*: Module;
-        key*, num*, size*, refcnt*: INTEGER;
-        data*, code*, imp*, cmd*, ent*, ptr*, unused: INTEGER  (*addresses*)
-      END ;
+      name*: ModuleName;
+      next*: Module;
+      key*, num*, size*, refcnt*: INTEGER;
+      data*, code*, imp*, cmd*, ent*, ptr*, unused: INTEGER  (*addresses*)
+    END ;
 
   VAR root*, M: Module;
     MTOrg*, AllocPtr*, res*: INTEGER;
     importing*, imported*, errName*: ModuleName;
     limit: INTEGER;
+
 
   PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
     VAR i: INTEGER;
@@ -28,17 +59,20 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
   END ThisFile;
 
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
-  BEGIN res := n; errName := name
+  BEGIN res := n; errName := name;
+    IF n > 0 THEN (* diagnostic output *)
+      DebugOut.WriteLine("err ", name, "", res)
+    END
   END error;
 
   PROCEDURE Check(s: ARRAY OF CHAR);
     VAR i: INTEGER; ch: CHAR;
-  BEGIN ch := s[0]; res := 1; i := 1;
+  BEGIN ch := s[0]; res := ResModNameNotValid; i := 1;
     IF (ch >= "A") & (ch <= "Z") OR (ch >= "a") & (ch <= "z") THEN
       REPEAT ch := s[i]; INC(i)
       UNTIL ~((ch >= "0") & (ch <= "9") OR (ch >= "A") & (ch <= "Z")
         OR (ch >= "a") & (ch <= "z") OR (ch = ".")) OR (i = 32);
-      IF (i < 32) & (ch = 0X) THEN res := 0 END
+      IF (i < 32) & (ch = 0X) THEN res := ResOK END
     END
   END Check;
 
@@ -56,9 +90,11 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
       name1, impname: ModuleName;
       F: Files.File; R: Files.Rider;
       import: ARRAY 16 OF Module;
-  BEGIN mod := root; error(0, name); nofimps := 0;
+  BEGIN
+    mod := root; error(ResOK, name); nofimps := 0;
     WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
     IF mod = NIL THEN (*load*)
+      DebugOut.WriteLine("ld  ", name, "", -1); (* diagnostic output *)
       Check(name);
       IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END ;
       IF F # NIL THEN
@@ -67,22 +103,27 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
         IF ch = versionkey THEN
           Files.ReadString(R, impname);   (*imports*)
           WHILE (impname[0] # 0X) & (res = 0) DO
+            DebugOut.WriteLine("imp ", name, impname, -1);  (* diagnostic output *)
             IF nofimps < 15 THEN
               Files.ReadInt(R, impkey);
               Load(impname, impmod); import[nofimps] := impmod; importing := name1;
               IF res = 0 THEN
-                IF impmod.key = impkey THEN INC(impmod.refcnt); INC(nofimps)
-                ELSE error(3, impname); imported := impname
+                IF impmod.key = impkey THEN
+                  INC(impmod.refcnt); INC(nofimps)
+                ELSE
+                  error(ResKeyInconsistent, impname); imported := impname
                 END
               END ;
               Files.ReadString(R, impname)
             ELSE
-              error(6, impname)
+              error(ResTooManyImp, impname)
             END
           END
-        ELSE error(2, name1)
+        ELSE
+          error(ResImpErr, name1)
         END
-      ELSE error(1, name)
+      ELSE
+        error(ResFileNotFound, name)
       END ;
       IF res = 0 THEN (*search for a hole in the list allocate and link*)
         INC(size, DescSize); mod := root;
@@ -92,12 +133,13 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
             p := AllocPtr; mod := SYSTEM.VAL(Module, p);
             AllocPtr := (p + size + 100H) DIV 20H * 20H; mod.size := AllocPtr - p; mod.num := root.num + 1;
             mod.next := root; root := mod
-          ELSE error(7, name1)
+          ELSE error(ResNoMem, name1)
           END
         ELSE (*fill hole*) p := SYSTEM.VAL(INTEGER, mod)
         END
       END ;
       IF res = 0 THEN (*read file*)
+        DebugOut.WriteLine("rd  ", name, "", nofimps);  (* diagnostic output *)
         INC(p, DescSize); (*allocate descriptor*)
         mod.name := name; mod.key := key; mod.refcnt := 0;
         mod.data := p;  (*data*)
@@ -133,9 +175,10 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT);
         Files.ReadInt(R, w); body := SYSTEM.VAL(Command, mod.code + w);
         Files.Read(R, ch);
-        IF ch # "O" THEN (*corrupted file*)  mod := NIL; error(4, name) END
+        IF ch # "O" THEN (*corrupted file*)  mod := NIL; error(ResFileCorrupt, name) END
       END ;
       IF res = 0 THEN (*fixup of BL*)
+        DebugOut.WriteLine("fx  ", name, "", -1);  (* diagnostic output *)
         adr := mod.code + fixorgP*4;
         WHILE adr # mod.code DO
           SYSTEM.GET(adr, inst);
@@ -181,7 +224,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
           END ;
           SYSTEM.PUT(adr, inst); adr := adr - disp*4
         END ;
-        body   (*initialize module*)
+        DebugOut.WriteLine("bb  ", name, "", -1);  (* diagnostic output *)
+        body;   (*initialize module*)
+        DebugOut.WriteLine("be  ", name, "", -1);  (* diagnostic output *)
       ELSIF res > 3 THEN importing := name;
         WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END
       END
@@ -192,7 +237,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
   PROCEDURE ThisCommand*(mod: Module; name: ARRAY OF CHAR): Command;
     VAR k, adr, w: INTEGER; ch: CHAR;
       s: ARRAY 32 OF CHAR;
-  BEGIN res := 5; w := 0;
+  BEGIN res := ResCmdUnknown; w := 0;
     IF mod # NIL THEN
       adr := mod.cmd; SYSTEM.GET(adr, ch);
       WHILE (ch # 0X) & (res # 0) DO k := 0; (*read command name*)
@@ -200,7 +245,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
         s[k] := 0X;
         REPEAT INC(adr) UNTIL adr MOD 4 = 0;
         SYSTEM.GET(adr, k); INC(adr, 4);
-        IF s = name THEN res := 0; w := mod.code + k ELSE SYSTEM.GET(adr, ch) END
+        IF s = name THEN res := ResOK; w := mod.code + k ELSE SYSTEM.GET(adr, ch) END
       END
     END
     RETURN SYSTEM.VAL(Command, w)
@@ -208,22 +253,35 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
 
   PROCEDURE Free*(name: ARRAY OF CHAR);
     VAR mod, imp: Module; p, q: INTEGER;
-  BEGIN mod := root; res := 0;
+  BEGIN mod := root; res := ResOK;
     WHILE (mod # NIL) & (mod.name # name) DO mod := mod.next END ;
     IF mod # NIL THEN
       IF mod.refcnt = 0 THEN
         mod.name[0] := 0X; p := mod.imp; q := mod.cmd;
         WHILE p < q DO SYSTEM.GET(p, imp); DEC(imp.refcnt); INC(p, 4) END ;
-      ELSE res := 1
+        (* IF mod = root THEN AllocPtr := SYSTEM.VAL(INTEGER, root); root := root.next END (* gray *)*)
+        IF mod = root THEN (* gray *)
+          WHILE root.name[0] = 0X DO
+            AllocPtr := SYSTEM.VAL(INTEGER, root); root := root.next
+          END
+        END
+      ELSE res := ResRefCntNotZero
       END
     END
   END Free;
 
   PROCEDURE Init*;
-  BEGIN Files.Init; MTOrg := SYSTEM.REG(MT);
-    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H)
+  BEGIN
+    Files.Init;
+    MTOrg := SYSTEM.REG(MT);
+    SYSTEM.GET(16, AllocPtr);
+    SYSTEM.GET(20, root);
+    SYSTEM.GET(24, limit);
+    (*DEC(limit, 8000H);*) DEC(limit, Kernel.stackSize) (* gray *)
   END Init;
 
-BEGIN Init; Load("Oberon", M);
-    LED(res); REPEAT UNTIL FALSE  (*only if load fails*)
+BEGIN
+  LED(0C0H); Init; LED(03H);
+  Load("Oberon", M);
+  LED(res); REPEAT UNTIL FALSE  (*only if load fails*)
 END Modules.
