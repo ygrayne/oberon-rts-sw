@@ -88,17 +88,17 @@ MODULE Start;
   END SetCmd;
 
 BEGIN
+  (*
   cmds[0][0] := "";
   cmds[0][1] := "System.ShowProcesses";
   cmds[0][2] := "";
   cmds[0][3] := "";
+  *)
 
-  (***
   cmds[0][0] := "LogView.InstallLogPrint";
   cmds[0][1] := "System.ShowProcesses";
   cmds[0][2] := "";
   cmds[0][3] := "LogView.z3";
-  *)
 
   cmds[1][0] := "LogView.InstallLogPrint";
   cmds[1][1] := "System.Date";

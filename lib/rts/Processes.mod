@@ -197,14 +197,10 @@ MODULE Processes;
         Coroutines.Init(p.cor, p.code, p.stackAdr, p.stackSize, p.stackHotSize, p.pn);
         res := OK;
         le.event := Log.Process; le.cause := Log.ProcInstall; le.procId := p.id; le.more0 := p.pn;
-        (***
         Log.Put(le)
-        *)
       ELSE
         le.event := Log.System; le.cause := Log.SysProcsFull; le.procId := p.id;
-        (***
         Log.Put(le)
-        *)
       END
     END
   END Install;
@@ -247,9 +243,7 @@ MODULE Processes;
       *)
       IF p.finalise # NIL THEN p.finalise(p) END;
       le.event := Log.Process; le.cause := Log.ProcRemove; le.procId := p.id; le.more0 := p.pn;
-      (***
       Log.Put(le)
-      *)
     END
   END Remove;
 
@@ -271,9 +265,7 @@ MODULE Processes;
       **)
       p.state := StateActive; INCL(activeP, p.pn);
       le.event := Log.Process; le.cause := Log.ProcReset; le.procId := p.id; le.more0 := p.pn;
-      (***
       Log.Put(le);
-      *)
       Coroutines.Init(p.cor, p.code, p.stackAdr, p.stackSize, p.stackHotSize, p.pn)
     ELSE
       (* the process was installed by a parent process *)
@@ -631,7 +623,7 @@ MODULE Processes;
       DEC(auditCnt);
       IF auditCnt = 0 THEN
         SysCtrl.ResetNumRestarts; SysCtrl.ResetErrorState;
-        IF ~logged THEN le.event := Log.System; le.cause := Log.SysOK; SysCtrl.GetReg(le.more0); (*** Log.Put(le) *); logged := TRUE END;
+        IF ~logged THEN le.event := Log.System; le.cause := Log.SysOK; SysCtrl.GetReg(le.more0); Log.Put(le); logged := TRUE END;
         auditCnt := AuditCount
       END
     UNTIL FALSE

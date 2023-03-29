@@ -1,0 +1,212 @@
+Astrobe for RISC5 Builder v8.0.0
+------------------
+
+Builder Phase 1: Checking Build.mod and imported modules...
+
+Checking Module Kernel
+  Imports:
+    SYSTEM
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Coroutines
+  Imports:
+    SYSTEM
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module DevAdr
+  Imports:
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\platform\p4-eth-arty-a7-100
+  Status: OK
+Checking Module ProcTimersFixed
+  Imports:
+    SYSTEM
+    DevAdr
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module SysCtrl
+  Imports:
+    SYSTEM
+    DevAdr
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module SPIdev
+  Imports:
+    DevAdr
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\platform\p4-eth-arty-a7-100
+  Status: OK
+Checking Module SPIu
+  Imports:
+    SYSTEM
+    SPIdev
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module RTC
+  Imports:
+    Kernel
+    SPIdev
+    SPIu
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Log
+  Imports:
+    SYSTEM
+    RTC
+    DevAdr
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Processes
+  Imports:
+    SYSTEM
+    Kernel
+    Coroutines
+    ProcTimersFixed
+    SysCtrl
+    Log
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module FileDir
+  Imports:
+    Kernel
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Files
+  Imports:
+    SYSTEM
+    Kernel
+    FileDir
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module DebugOut
+  Imports:
+    SYSTEM
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Modules
+  Imports:
+    SYSTEM
+    Files
+    Kernel
+    DebugOut
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Texts
+  Imports:
+    SYSTEM
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module RS232dev
+  Imports:
+    Texts
+    DevAdr
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\platform\p4-eth-arty-a7-100
+  Status: OK
+Checking Module RS232
+  Imports:
+    SYSTEM
+    Texts
+    RS232dev
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module ConsoleC
+  Imports:
+    Texts
+    RS232dev
+    RS232
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Upload
+  Imports:
+    Files
+    RS232dev
+    RS232
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Start
+  Imports:
+    SYSTEM
+    DevAdr
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Cmds
+  Imports:
+    Texts
+    Modules
+    ConsoleC
+    RS232
+    Kernel
+    Processes
+    Log
+    Upload
+    Start
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Errors
+  Imports:
+    SYSTEM
+    Kernel
+    Modules
+    SysCtrl
+    Processes
+    Log
+    Start
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Oberon
+  Imports:
+    Processes
+    Modules
+    Files
+    Kernel
+    Cmds
+    Errors
+    Log
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module System
+  Imports:
+    SYSTEM
+    Kernel
+    FileDir
+    Files
+    Modules
+    Texts
+    Oberon
+    ConsoleC
+    Processes
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module LogView
+  Imports:
+    SYSTEM
+    Log
+    Modules
+    Texts
+    ConsoleC
+    SysCtrl
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module BootFile
+  Imports:
+    Files
+    Texts
+    Kernel
+    ConsoleC
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\lib\rts
+  Status: OK
+Checking Module Build
+  Imports:
+    Oberon
+    System
+    LogView
+    BootFile
+  Folder: C:\Users\gray\Projects\Oberon\RISC5\WORK\oberon-rts-sw\system\s1-rts
+  Status: OK
+------------------
+
+Builder Phase 2: Compiling missing / outdated modules...
+
+0 modules compiled.
+------------------
+
+Successful compilation
+Elapsed time: 00:00:00.4983880

@@ -83,9 +83,7 @@ MODULE Oberon;
     Kernel.Scan; LED(20H);
     le.event := Log.System; le.cause := Log.SysCollect; le.more0 := Time() - time;
     le.more1 := alloc; le.more2 := Kernel.allocated;
-    (***
     Log.Put(le)
-    *)
   END collect;
 
   PROCEDURE gcc;
