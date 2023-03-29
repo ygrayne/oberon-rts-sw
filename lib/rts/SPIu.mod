@@ -1,5 +1,5 @@
 (**
-  Unbuffered, extended SPI device
+  Unbuffered SPI device driver
   --
   2020 - 2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences

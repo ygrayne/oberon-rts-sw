@@ -8,7 +8,7 @@
   https://oberon-rts.org/licences
 **)
 
-MODULE RS232b;
+MODULE RS232;
 
   IMPORT SYSTEM, Texts, RS232dev;
 
@@ -149,4 +149,5 @@ MODULE RS232b;
     END
   END GetString;
 
-END RS232b.
+END RS232.
+

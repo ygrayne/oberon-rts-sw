@@ -33,7 +33,7 @@
 
 MODULE Upload;
 
-  IMPORT Files, RS232dev, RS232 := RS232b;
+  IMPORT Files, RS232dev, RS232;
 
   CONST
     FnLength = 32;

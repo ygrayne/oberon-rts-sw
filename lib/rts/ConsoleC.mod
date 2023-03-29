@@ -9,7 +9,7 @@
 
 MODULE ConsoleC;
 
-  IMPORT Texts, RS232dev, RS232b;
+  IMPORT Texts, RS232dev, RS232;
 
   VAR
     C*: Texts.Writer;
@@ -19,5 +19,5 @@ BEGIN
   NEW(Dev); ASSERT(Dev # NIL);
   RS232dev.Init(Dev, RS232dev.Dev0);
   RS232dev.SetCond(Dev, RS232dev.RXNE, RS232dev.TXBE); (* set to non-buffered use *)
-  Texts.OpenWriter(C, Dev, RS232b.PutChar)
+  Texts.OpenWriter(C, Dev, RS232.PutChar)
 END ConsoleC.

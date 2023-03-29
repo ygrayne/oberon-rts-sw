@@ -14,14 +14,18 @@
 MODULE Oberon;
 
   IMPORT
-    Procs := Processes, Modules, Files, Kernel, Cmds, Errors, Log, SPIdev;
+    Procs := Processes, Modules, Files, Kernel, Cmds, Errors, Log;
 
   CONST
+    (***
     SP = 14;
+    *)
 
+    (***
     (* RTC connection *)
     RTCspiDevice = SPIdev.Dev0; (* unbuffered, shared with SD card *)
     RTCchipselect = 1;
+    *)
 
     (* GC process config *)
     GCperiod = 7;

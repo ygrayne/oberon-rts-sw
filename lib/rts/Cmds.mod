@@ -17,7 +17,7 @@
 
 MODULE Cmds;
 
-  IMPORT Texts, Modules, Console := ConsoleC, RS232 := RS232b, Kernel, Procs := Processes, Log, Upload, Start;
+  IMPORT Texts, Modules, Console := ConsoleC, RS232, Kernel, Procs := Processes, Log, Upload, Start;
 
   CONST
     (* process defs *)
