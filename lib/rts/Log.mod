@@ -2,11 +2,14 @@
   FPGA-based event logger.
   --
   Works as circular buffer (FIFO), with the newest log entry overwriting the oldest.
-  A print handler can be installed to also print out the log entry's meaning and values. Off by default.
+  A print handler can be installed to also print out the log entry's meaning and values.
+  Off by default.
   --
   The FIFO logic is in the software. The FPGA buffer can be written and read at random positions.
   Write position: 'putix', read position: 'getix'.
   'putix' and 'getix' can be stored in the FPGA as well, so they survive a system hw-reset.
+  --
+  Uses an 8 bit wide buffer in the FPGA. A 32 bit wide variant might be faster.
   --
   2021 -2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences
@@ -114,7 +117,6 @@ MODULE Log;
   PROCEDURE Put*(VAR e: Entry);
   BEGIN
     getIndices(putix, getix);
-    putIndices(putix, getix);
     IF RTC.Installed THEN
       e.when := RTC.Clock()
     ELSE

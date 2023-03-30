@@ -177,30 +177,3 @@ MODULE LogView;
 BEGIN
   W := Console.C
 END LogView.
-
-(*
-    VersionAdr = -128;  (* IO address to read processor version information *)
-
-  (* processor version as read from FPGA *)
-  PROCEDURE getProcVersion(VAR creator, model, major, minor, dev: INTEGER);
-    VAR x: INTEGER;
-  BEGIN
-    SYSTEM.GET(VersionAdr, x);
-    creator := BFX(x, 31, 26);
-    model := BFX(x, 25, 20);
-    major := BFX(x, 19, 14);
-    minor := BFX(x, 13, 8);
-    dev := BFX(x, 7, 0)
-  END getProcVersion;
-
-  PROCEDURE printProcVersion;
-    VAR creator, model, major, minor, dev: INTEGER;
-  BEGIN
-    getProcVersion(creator, model, major, minor, dev);
-    Texts.WriteInt(W, creator, 0); Texts.WriteString(W, "-");
-    Texts.WriteInt(W, model, 0); Texts.WriteString(W, "-");
-    Texts.WriteInt(W, major, 0); Texts.WriteString(W, ".");
-    Texts.WriteInt(W, minor, 0); Texts.WriteString(W, "-");
-    Texts.WriteInt(W, dev, 0)
-  END printProcVersion;
-*)

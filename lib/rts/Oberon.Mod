@@ -14,18 +14,14 @@
 MODULE Oberon;
 
   IMPORT
-    Procs := Processes, Modules, Files, Kernel, Cmds, Errors, Log;
+     SYSTEM, Procs := Processes, Modules, Files, Kernel, Cmds, Errors, Log, SysCtrl, RTC, SPIdev;
 
   CONST
-    (***
     SP = 14;
-    *)
 
-    (***
     (* RTC connection *)
     RTCspiDevice = SPIdev.Dev0; (* unbuffered, shared with SD card *)
     RTCchipselect = 1;
-    *)
 
     (* GC process config *)
     GCperiod = 7;
@@ -117,7 +113,6 @@ MODULE Oberon;
 
   (* start-up stuff *)
 
-  (***
   PROCEDURE logRestart;
     VAR le: Log.Entry;
   BEGIN
@@ -149,7 +144,6 @@ MODULE Oberon;
     le.more2 := Kernel.allocated;  (* startup heap used *)
     Log.Put(le)
   END logMemData;
-  *)
 
 BEGIN
   (* entry point for the outer core, loaded by Modules *)
@@ -159,13 +153,11 @@ BEGIN
   Par := Cmds.Par; Call := Cmds.Call; (* EO command handling compatibility *)
   (***
   RTC.Install(RTCspiDevice, RTCchipselect); (* needed for logging *)
-  logRestart;
   *)
+  logRestart;
   installGC;
   Procs.InstallAudit;
-  (***
   logMemData(SYSTEM.REG(SP));
-  *)
   Cmds.Install;
   (* from here, cmds will use most of the original stack, the scheduler (Loop) only keeps a small part
   at the top, see Procs.SchedulerStackSize *)
