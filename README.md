@@ -4,7 +4,7 @@
 
 ## Overview
 
-Check out [oberon-rts.org](https://oberon-rts.org), which is awfully behind, but it's the best there is for now, apart from this repository. As the saying goes, only debug code, don't get deceived by the comments.
+Check out [oberon-rts.org](https://oberon-rts.org), which is awfully behind, but it's the best there is for now, apart from this and the corresponding hardware repository. As the saying goes, only debug code, don't get deceived by the comments.
 
 Here is the sister repo for the corresponding hardware: [oberon-rts-hw](https://github.com/ygrayne/oberon-rts-hw).
 
