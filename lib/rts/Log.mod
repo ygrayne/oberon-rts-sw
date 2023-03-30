@@ -2,11 +2,14 @@
   FPGA-based event logger.
   --
   Works as circular buffer (FIFO), with the newest log entry overwriting the oldest.
-  A print handler can be installed to also print out the log entry's meaning and values. Off by default.
+  A print handler can be installed to also print out the log entry's meaning and values.
+  Off by default.
   --
   The FIFO logic is in the software. The FPGA buffer can be written and read at random positions.
-  Write position: 'putIndex', read position: 'getIndex'.
-  'putIndex' and 'getIndex' can be stored in the FPGA as well, so they survive a system hw-reset.
+  Write position: 'putix', read position: 'getix'.
+  'putix' and 'getix' can be stored in the FPGA as well, so they survive a system hw-reset.
+  --
+  Uses an 8 bit wide buffer in the FPGA. A 32 bit wide variant might be faster.
   --
   2021 -2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences
@@ -52,10 +55,9 @@ MODULE Log;
 
     (* log buffer hw addresses *)
     DataAdr = DevAdr.LogDataAdr;
-    PutIndexAdr = DevAdr.LogPutIndexAdr;
-    GetIndexAdr = DevAdr.LogGetIndexAdr;
+    IndexAdr = DevAdr.LogIndexAdr;
 
-    EntrySize = 64;
+    EntrySize = 64; (* must ve the size in bytes of Entry *)
 
   TYPE
     (* each entry in the FPGA can hold 64 8-bit values *)
@@ -71,7 +73,7 @@ MODULE Log;
 
   VAR
     print: PROCEDURE(e: Entry);
-    putIndex, getIndex: INTEGER;
+    putix, getix: INTEGER;
     go: INTEGER;
 
 
@@ -95,37 +97,49 @@ MODULE Log;
   END getBlock;
 
 
-  PROCEDURE Put*(VAR e: Entry);
-  (* boot *)
+  PROCEDURE putIndices(pix, gix: INTEGER);
+    VAR indices: INTEGER;
   BEGIN
-    SYSTEM.GET(PutIndexAdr, putIndex);
-    SYSTEM.PUT(PutIndexAdr, putIndex);
+    indices := LSL(pix, 16) + gix;
+    SYSTEM.PUT(IndexAdr, indices)
+  END putIndices;
+
+
+  PROCEDURE getIndices(VAR pix, gix: INTEGER);
+    VAR indices: INTEGER;
+  BEGIN
+    SYSTEM.GET(IndexAdr, indices);
+    pix := indices DIV 010000H MOD 010000H;
+    gix := indices MOD 010000H;
+  END getIndices;
+
+
+  PROCEDURE Put*(VAR e: Entry);
+  BEGIN
+    getIndices(putix, getix);
     IF RTC.Installed THEN
       e.when := RTC.Clock()
     ELSE
       e.when := 0
     END;
     putBlock(e);
-    SYSTEM.GET(GetIndexAdr, getIndex);
-    putIndex := (putIndex + 1) MOD NumEntries;
-    IF getIndex = putIndex THEN getIndex := (getIndex + 1) MOD NumEntries END;
-    SYSTEM.PUT(PutIndexAdr, putIndex);
-    SYSTEM.PUT(GetIndexAdr, getIndex);
+    putix := (putix + 1) MOD NumEntries;
+    IF getix = putix THEN getix := (getix + 1) MOD NumEntries END;
+    putIndices(putix, getix);
     IF print # NIL THEN print(e) END
   END Put;
 
 
   PROCEDURE BeginGet*;
   BEGIN
-    SYSTEM.GET(PutIndexAdr, putIndex);
-    SYSTEM.GET(GetIndexAdr, getIndex);
-    go := getIndex
+    getIndices(putix, getix);
+    go := getix
   END BeginGet;
 
 
   PROCEDURE EndGet*;
   BEGIN
-    SYSTEM.PUT(GetIndexAdr, getIndex)
+    putIndices(putix, getix);
   END EndGet;
 
 
@@ -133,13 +147,12 @@ MODULE Log;
   BEGIN
     getBlock(e);
     go := (go + 1) MOD NumEntries;
-    SYSTEM.PUT(GetIndexAdr, go);
+    putIndices(putix, go)
   END GetNext;
 
 
   PROCEDURE GetMore*(): BOOLEAN;
-  BEGIN
-    RETURN go # putIndex
+    RETURN go # putix
   END GetMore;
 
 

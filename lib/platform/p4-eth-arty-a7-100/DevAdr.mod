@@ -16,9 +16,8 @@ MODULE DevAdr;
     MsTimerAdr* = -64;
 
     (* logs *)
-    LogDataAdr* = -220;
-    LogPutIndexAdr* = -224;
-    LogGetIndexAdr* = -228;
+    LogDataAdr* = -224;
+    LogIndexAdr* = -220;
 
     (* process periodic timing *)
     ProcTimersFixedAdr* = -132;
@@ -33,7 +32,7 @@ MODULE DevAdr;
     RS232dev0DataAdr* = -56;
     RS232dev0StatusAdr* = -52;
 
-    (* === SPI devices === *)
+    (* SPI devices *)
     SPIdev0DataAdr* = -48;
     SPIdev0StatusAdr* = -44;
 

@@ -85,26 +85,18 @@ MODULE Errors;
       le.cause := SysCtrl.AbortCause;
       le.event := Log.Abort;
       setModule(le); setProc(le);
-      (***
       Log.Put(le);
-      *)
       error;
 
       (* we should not return here *)
       le.event := Log.System; le.cause := Log.SysFault;
-      (***
       Log.Put(le);
-      *)
       le.cause := Log.SysRestart;
-      (***
       Log.Put(le);
-      *)
       restartSystem
     ELSE (* error in error handling, bail out *)
       le.event := Log.System; le.cause := Log.SysErrorAbort;
-      (***
       Log.Put(le);
-      *)
       (* restart logging done upon restart, cf. module Oberon *)
       restartSystem
     END
@@ -128,20 +120,14 @@ MODULE Errors;
         le.event := Log.Trap;
         le.adr0 := adr;
         setModule(le); setProc(le);
-        (***
         Log.Put(le);
-        *)
         error;
 
         (* we should not return here *)
         le.event := Log.System; le.cause := Log.SysFault;
-        (***
         Log.Put(le);
-        *)
         le.cause := Log.SysRestart;
-        (***
         Log.Put(le);
-        *)
         restartSystem
       ELSE (* error in error handling, bail out *)
         le.event := Log.System; le.cause := Log.SysErrorTrap;
@@ -149,9 +135,7 @@ MODULE Errors;
         le.more2 := trapInstruction DIV 100H MOD 10000H;
         le.adr0 := adr;
         setModule(le);
-        (***
         Log.Put(le);
-        *)
         (* restart logging done upon restart, cf. module Oberon *)
         restartSystem
       END

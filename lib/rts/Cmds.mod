@@ -147,7 +147,7 @@ MODULE Cmds;
         FOR i := 0 TO Start.NumCmds - 1 DO
           Start.GetCmd(tbl, i, Par.text.string, valid);
           IF valid THEN
-            Texts.WriteString(W, Par.text.string); Texts.WriteLn(W);
+            Texts.WriteString(W, "=> "); Texts.WriteString(W, Par.text.string); Texts.WriteLn(W);
             Call(Par.text.string, res);
             IF res # 0 THEN
               logError(res, tbl, i);
