@@ -81,7 +81,7 @@ MODULE Upload;
         RS232.GetBytes(dev, buf, x);
         Files.WriteBytes(R, buf, x);
         RS232.PutByte(dev, ACK)
-      UNTIL x < 255;
+      UNTIL x < BlockLength;
       Files.Register(F);
       RS232.PutByte(dev, ACK)
     END;

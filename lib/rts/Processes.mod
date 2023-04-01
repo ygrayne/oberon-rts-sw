@@ -2,13 +2,13 @@
   Process Handling
   Based on coroutines
   --
-  * Thread creation and installation for scheduling
-  * Thread scheduling procedures, eg. delays, suspension, yield control
-  * Thread reset, recover, kill, finalise
+  * Process creation and installation for scheduling
+  * Process scheduling procedures, eg. delays, suspension, yield control
+  * Process reset, recover, kill, finalise
   * Cooperative scheduler (Loop)
   * Audit process
   --
-  2020-2021 Gray gray@grayraven.org
+  (c) 2020-2023 Gray gray@grayraven.org
   https://oberon-rts.org/licences
 **)
 
@@ -43,10 +43,9 @@ MODULE Processes;
     Timeout* = -1;
 
     (* config *)
-    (* note: currently, there are 16 process controllers instantiated in HW *)
-    (* with the current HW design, max 32 process controllers are possible *)
+    (* note: there are 32 process controllers instantiated in HW *)
     IdLen* = 4;
-    MaxNumProcs* = 15;
+    MaxNumProcs* = 31;
     FirstProcNum = 1; (* 0 is reserved for the scheduler *)
 
     SchedulerStackSize = 512;
@@ -108,48 +107,6 @@ MODULE Processes;
     Eval*, Exec*, MaxEval*, MaxExec*: INTEGER; (* clock cycles *)
     ClockFreq*, ClockPeriod*: INTEGER; (* Hz, nanoseconds *)
 
-(*
-  PROCEDURE CHECK(pid: ARRAY OF CHAR; state: INTEGER; allowedStates: SET);
-    CONST BtnSwiAdr = -84; SwiFirst = 0; SwiLast = 3; CheckSwitch = 3;
-    VAR i: INTEGER; swi: SET;
-  BEGIN
-    SYSTEM.GET(BtnSwiAdr, swi);
-    swi := BITS(BFX(ORD(swi), SwiLast, SwiFirst));
-    IF CheckSwitch IN swi THEN
-      IF ~(state IN allowedStates) THEN
-        Texts.WriteLn(W);
-        Texts.WriteString(W, pid);
-        Texts.WriteString(W, " state: "); Texts.WriteInt(W, state, 0);
-        Texts.WriteString(W, " allowed: ");
-        FOR i := 0 TO MaxState DO
-          IF i IN allowedStates THEN Texts.WriteInt(W, i, 3) END
-        END;
-        Texts.WriteLn(W)
-      END
-    END
-  END CHECK;
-*)
-(*
-  PROCEDURE CHECK(p: Process; allowedStates: SET);
-    CONST BtnSwiAdr = -84; SwiFirst = 0; SwiLast = 3; CheckSwitch = 3;
-    VAR i: INTEGER; swi: SET;
-  BEGIN
-    SYSTEM.GET(BtnSwiAdr, swi);
-    swi := BITS(BFX(ORD(swi), SwiLast, SwiFirst));
-    IF CheckSwitch IN swi THEN
-      IF ~(p.state IN allowedStates) THEN
-        Texts.WriteLn(W);
-        Texts.WriteString(W, p.id);
-        Texts.WriteString(W, " state: "); Texts.WriteInt(W, p.state, 0);
-        Texts.WriteString(W, " allowed: ");
-        FOR i := 0 TO MaxState DO
-          IF i IN allowedStates THEN Texts.WriteInt(W, i, 3) END
-        END;
-        Texts.WriteLn(W)
-      END
-    END
-  END CHECK;
-*)
 
   PROCEDURE InitRaw*(p: Process; code: ProcCode; stackAdr, stackSize, stackHotSize, ptype, prio: INTEGER; id: ARRAY OF CHAR);
   BEGIN
@@ -684,6 +641,48 @@ BEGIN
   initM
 END Processes.
 
+(*
+  PROCEDURE CHECK(pid: ARRAY OF CHAR; state: INTEGER; allowedStates: SET);
+    CONST BtnSwiAdr = -84; SwiFirst = 0; SwiLast = 3; CheckSwitch = 3;
+    VAR i: INTEGER; swi: SET;
+  BEGIN
+    SYSTEM.GET(BtnSwiAdr, swi);
+    swi := BITS(BFX(ORD(swi), SwiLast, SwiFirst));
+    IF CheckSwitch IN swi THEN
+      IF ~(state IN allowedStates) THEN
+        Texts.WriteLn(W);
+        Texts.WriteString(W, pid);
+        Texts.WriteString(W, " state: "); Texts.WriteInt(W, state, 0);
+        Texts.WriteString(W, " allowed: ");
+        FOR i := 0 TO MaxState DO
+          IF i IN allowedStates THEN Texts.WriteInt(W, i, 3) END
+        END;
+        Texts.WriteLn(W)
+      END
+    END
+  END CHECK;
+*)
+(*
+  PROCEDURE CHECK(p: Process; allowedStates: SET);
+    CONST BtnSwiAdr = -84; SwiFirst = 0; SwiLast = 3; CheckSwitch = 3;
+    VAR i: INTEGER; swi: SET;
+  BEGIN
+    SYSTEM.GET(BtnSwiAdr, swi);
+    swi := BITS(BFX(ORD(swi), SwiLast, SwiFirst));
+    IF CheckSwitch IN swi THEN
+      IF ~(p.state IN allowedStates) THEN
+        Texts.WriteLn(W);
+        Texts.WriteString(W, p.id);
+        Texts.WriteString(W, " state: "); Texts.WriteInt(W, p.state, 0);
+        Texts.WriteString(W, " allowed: ");
+        FOR i := 0 TO MaxState DO
+          IF i IN allowedStates THEN Texts.WriteInt(W, i, 3) END
+        END;
+        Texts.WriteLn(W)
+      END
+    END
+  END CHECK;
+*)
 
 (*
   PROCEDURE Suspend*(p: Process);
@@ -722,4 +721,3 @@ END Processes.
     RETURN Cp.pn IN ready
   END TimedOut;
 *)
-

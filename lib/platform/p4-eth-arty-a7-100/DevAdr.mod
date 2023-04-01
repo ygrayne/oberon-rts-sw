@@ -3,7 +3,7 @@
   --
   Platform: p4-eth-arty-a7-100
   --
-  2023 Gray gray@grayraven.org
+  (c) 2023 Gray gray@grayraven.org
   https://oberon-rts.org/licences
 **)
 

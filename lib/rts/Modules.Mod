@@ -272,7 +272,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
 
   PROCEDURE Init*;
   BEGIN
+    LED(0E2H);
     Files.Init;
+    LED(0E3H);
     MTOrg := SYSTEM.REG(MT);
     SYSTEM.GET(16, AllocPtr);
     SYSTEM.GET(20, root);
@@ -281,7 +283,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
   END Init;
 
 BEGIN
-  LED(0C0H); Init; LED(03H);
+  LED(0E1H); Init; LED(0E4H);
   Load("Oberon", M);
   LED(res); REPEAT UNTIL FALSE  (*only if load fails*)
 END Modules.

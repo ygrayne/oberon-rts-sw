@@ -71,12 +71,12 @@ MODULE* BootLoad;
     VAR res: INTEGER;
   BEGIN
     SPIIdle(10); (*first, idle for at least 80 clks*)
-    LED(1);
+    LED(080H + 1);
     REPEAT (* gray: until card accepts init *)
       SPICmd(0, 0); (*CMD0 when card selected, sets MMC SPI mode*)
       SYSTEM.GET(spiData, res);
     UNTIL res = 1H;
-    LED(2);
+    LED(080H + 2);
     SPICmd(8, 1AAH); SPI(-1); SPI(-1); SPI(-1); (*CMD8 for SD cards*)
     REPEAT (*until card becomes ready*)
       (*ACMD41, optionally with high-capacity (HCS) bit set, starts init*)
@@ -86,7 +86,7 @@ MODULE* BootLoad;
       SPI(-1); SPI(-1); SPI(-1); (*flush response*)
       SPIIdle(10000)
     UNTIL res = 0;
-    LED(3);
+    LED(080H + 3);
     (*CMD16 set block size as a precaution (should default)*)
     SPICmd(16, 512); SPIIdle(1)
   END InitSPI;
@@ -103,16 +103,16 @@ MODULE* BootLoad;
     VAR i, data: INTEGER;
   BEGIN SDShift(src); SPICmd(17, src); (*CMD17 read one block*)
     i := 0; (*wait for start data marker*)
-    LED(4);
+    LED(080H + 4);
     REPEAT SPI(-1); SYSTEM.GET(spiData, data); INC(i) UNTIL data = 254;
     SYSTEM.PUT(spiCtrl, SPIWORD + SPIFAST + CARD0);
-    LED(5);
+    LED(080H + 5);
     FOR i := 0 TO 508 BY 4 DO
       SYSTEM.PUT(spiData, -1);
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
       SYSTEM.GET(spiData, data); SYSTEM.PUT(dst, data); INC(dst, 4)
     END;
-    LED(6);
+    LED(080H + 6);
     SPI(255); SPI(255); SPIIdle(1) (*may be a checksum; deselect card*)
   END ReadSD;
 
@@ -132,10 +132,10 @@ BEGIN
   SYSTEM.PUT(CalltraceStatusAdr, SelectCtrl); (* select call trace stack 0 *)
   SYSTEM.PUT(CalltraceStatusAdr, ClearCtrl);
   *)
-  LED(0FAH);
+  LED(080H + 0CH);
   InitSPI;
   LoadFromDisk;
-  LED(0F0H);
+  LED(080H + 0DH);
   SYSTEM.PUT(12, MemLim); SYSTEM.PUT(24, stackOrg);
-  LED(0FFH)
+  LED(080H + 0FH)
 END BootLoad.
