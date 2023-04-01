@@ -15,7 +15,7 @@
 MODULE Processes;
 
   IMPORT
-    SYSTEM, Kernel, Coroutines, ProcTimers := ProcTimersFixed, SysCtrl, Log;
+    SYSTEM, Kernel, Coroutines, ProcTimers := ProcTimersFixed, SysCtrl, Log, Watchdog;
 
   CONST
     (* process states *)
@@ -531,14 +531,10 @@ MODULE Processes;
       ProcMonitor.CaptureEvalMon;
       ProcMonitor.ResetExecMon;
       *)
-      (***
       Watchdog.Reset;
-      *)
       Cp := nextReady(cp);
       IF Cp # NIL THEN
-        (***
         IF Cp.watchdogOff THEN Watchdog.Stop END;
-        *)
         Cp.state := StateRunning;
         (***
         ProcMonitor.StartProcMon(Cp.maxRunTime);

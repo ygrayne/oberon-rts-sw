@@ -28,6 +28,9 @@ MODULE DevAdr;
     (* system ctrl register *)
     SysCtrlRegAdr* = -68;
 
+    (* watchdog *)
+    WatchdogAdr* = -112;
+
     (* RS232 devices *)
     RS232dev0DataAdr* = -56;
     RS232dev0StatusAdr* = -52;
