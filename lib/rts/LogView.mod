@@ -1,7 +1,7 @@
 (**
   Textual output of log events.
   --
-  (c) 2021-2022 Gray, gray@grayraven.org
+  (c) 2021-2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences
 **)
 
@@ -154,10 +154,10 @@ MODULE LogView;
   PROCEDURE ShowLog*;
     VAR le: Log.Entry;
   BEGIN
-    Texts.WriteString(W, "LogView.List "); Texts.WriteLn(W);
+    Texts.WriteString(W, "LogView.ShowLog "); Texts.WriteLn(W);
     Log.BeginGet;
-    WHILE Log.GetMore() DO
-      Log.GetNext(le);
+    WHILE Log.More() DO
+      Log.Get(le);
       PrintEntry(le)
     END;
     Log.EndGet
