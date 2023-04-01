@@ -1,13 +1,12 @@
 (**
   Entry point for the outer core of the system, loaded my Modules.
   --
-  Based on EO and PO Oberon
+  Based on Project Oberon and Embedded Project Oberon
   (*JG 6.9.90 / 23.9.93 / 13.8.94 *)
   (*NW 14.4.2013 / 22.12.2013 *)
   (*CB 01/07/2019 *)
   --
-  Adaptations and changes by
-  2020 - 2021 by Gray, gray@grayraven.org
+  Changes by Gray, gray@grayraven.org, 2020 - 2023
   https://oberon-rts.org/licences
 **)
 
@@ -149,19 +148,25 @@ BEGIN
   (* entry point for the outer core, loaded by Modules *)
   (* the temp trap handler is still installed *)
   (* no abort interrupts and abort handler are installed *)
-  LED(0AAH); (* light show just for the effect *)
+  LED(0F1H);
   Par := Cmds.Par; Call := Cmds.Call; (* EO command handling compatibility *)
   (***
   RTC.Install(RTCspiDevice, RTCchipselect); (* needed for logging *)
   *)
   logRestart;
+  LED(0F2H);
   installGC;
+  LED(0F3H);
   Procs.InstallAudit;
+  LED(0F4H);
   logMemData(SYSTEM.REG(SP));
+  LED(0F5H);
   Cmds.Install;
+  LED(0F6H);
   (* from here, cmds will use most of the original stack, the scheduler (Loop) only keeps a small part
   at the top, see Procs.SchedulerStackSize *)
   Errors.Install; (* installs trap and abort handlers, as well as error interrupt handlers *)
+  LED(0F7H);
   (*Console.WriteLine(""); Console.WriteLine(RTSversion);*)
   (*Calltrace.Select(0);*)
   collect; (* make sure we have all heap space available for startup loading by Cmds *)

@@ -13,14 +13,16 @@
 !/system/
 
 /lib/epo/*
-/lib/rts/*
-/lib/platform/x/*
+/lib/rts/*/*
+/lib/platform/*/*
 /lib/gen/*
-/lib/system/x/*
+/lib/system/*/*
 
 # add/exclude module files
 !*.mod
 *.rsc
 *.smb
 *.lst
+*.bin
 !*.md
+*.mem
