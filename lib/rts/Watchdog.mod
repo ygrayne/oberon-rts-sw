@@ -1,4 +1,3 @@
-MODULE Watchdog;
 (**
   Watchdog interface
   --
@@ -8,6 +7,8 @@ MODULE Watchdog;
   2020 - 2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences
 **)
+
+MODULE Watchdog;
 
   IMPORT SYSTEM, DevAdr;
 

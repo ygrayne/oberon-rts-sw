@@ -7,7 +7,7 @@
 
 MODULE Coroutines;
 
-  IMPORT SYSTEM;
+  IMPORT SYSTEM, StackMonitor;
 
   CONST SP = 14;
 
@@ -53,9 +53,7 @@ MODULE Coroutines;
     (* prologue: push caller's LNK and parameters 'f' and 't' onto f's stack *)
 
     (* disarm stack monitor, get coroutine number *)
-    (***
     StackMonitor.Disarm(f.id, f.stackAdr, f.stackHotLimit, f.stackMax);
-    *)
 
     (* stack switching *)
     (* save f's SP *)
@@ -71,8 +69,8 @@ MODULE Coroutines;
     (* hence we access 't' using 'f' here, so the compiler accesses 't' at 'SP + 4' *)
     (***
     Calltrace.Select(f.id);
-    StackMonitor.Arm(f.id, f.stackAdr, f.stackHotLimit, f.stackMax)
     *)
+    StackMonitor.Arm(f.id, f.stackAdr, f.stackHotLimit, f.stackMax)
 
     (* epilogue: retrieve LNK from stack, adjust stack by +12 *)
     (* branch to LNK, ie. continue "as" t *)

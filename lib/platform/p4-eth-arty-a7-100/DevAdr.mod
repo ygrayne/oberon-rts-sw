@@ -31,6 +31,9 @@ MODULE DevAdr;
     (* watchdog *)
     WatchdogAdr* = -112;
 
+    (* stack monitor *)
+    StackMonAdr* = -96;
+
     (* RS232 devices *)
     RS232dev0DataAdr* = -56;
     RS232dev0StatusAdr* = -52;
