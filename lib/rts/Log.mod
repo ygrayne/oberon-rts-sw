@@ -63,11 +63,12 @@ MODULE Log;
   TYPE
     (* each entry in the FPGA can hold 64 8-bit values *)
     Entry* = RECORD
-      event*, cause*, more3*, more4*: BYTE;
+      event*, cause*: BYTE;
       procId*: ARRAY 4 OF CHAR;
       when*: INTEGER;
       adr0*, adr1*: INTEGER;            (* error address, module address *)
       more0*, more1*, more2*: INTEGER;  (* additional data, event/cause-dependent *)
+      more3*, more4*: BYTE
       str0*: ARRAY 32 OF CHAR
     END;
     EntryBlock = ARRAY EntrySize OF BYTE;

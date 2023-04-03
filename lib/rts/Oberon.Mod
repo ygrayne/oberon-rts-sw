@@ -13,7 +13,7 @@
 MODULE Oberon;
 
   IMPORT
-     SYSTEM, Procs := Processes, Modules, Files, Kernel, Cmds, Errors, Log, SysCtrl, RTC, SPIdev;
+     SYSTEM, Procs := Processes, Modules, Files, Kernel, Cmds, Errors, Log, SysCtrl, RTC, SPIdev, StackMonitor;
 
   CONST
     SP = 14;
@@ -134,10 +134,7 @@ MODULE Oberon;
     VAR x: INTEGER; le: Log.Entry;
   BEGIN
     le.event := Log.System; le.cause := Log.SysMemStart;
-    (***
-    StackMonitor.GetMax(x);
-    *)
-    x := 0;
+    StackMonitor.GetMin(x);
     le.more0 := Kernel.stackOrg - x; (* startup stack used *)
     le.more1 := Kernel.stackOrg - SP; (* stack pointer before loading cmds *)
     le.more2 := Kernel.allocated;  (* startup heap used *)
