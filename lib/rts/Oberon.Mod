@@ -13,7 +13,7 @@
 MODULE Oberon;
 
   IMPORT
-     SYSTEM, Procs := Processes, Modules, Files, Kernel, Cmds, Errors, Log, SysCtrl, RTC, SPIdev, StackMonitor;
+     SYSTEM, Procs := Processes, GC, Kernel, Cmds, SysInstall, Log, SysCtrl, RTC, SPIdev, StackMonitor;
 
   CONST
     SP = 14;
@@ -22,31 +22,14 @@ MODULE Oberon;
     RTCspiDevice = SPIdev.Dev0; (* unbuffered, shared with SD card *)
     RTCchipselect = 1;
 
-    (* GC process config *)
-    GCperiod = 7;
-    GCid = "gc";
-    GCprio = 0;
-    GCptype = Procs.SystemProc;
-    GCstackSize = 512;
-    GCstackHot = 0;
-    GClimitDiv = 4; (* kick in when only 1/4 of heap space is left *)
-
   VAR
     (* EO compatibility, eg. as used by System *)
     Par*: Cmds.ParRef;
     Call*: PROCEDURE(name: ARRAY OF CHAR; VAR res: INTEGER);
 
-    (* GC *)
-    gc: Procs.Process;
-    gcstack: ARRAY GCstackSize OF BYTE;
-    gcCount, heapSize, GClimit*: INTEGER;
-
 
   PROCEDURE Clock*(): INTEGER;
-    VAR x: INTEGER;
-  BEGIN
-    x := Kernel.Clock()
-    RETURN x
+    RETURN Kernel.Clock()
   END Clock;
 
 
@@ -57,58 +40,9 @@ MODULE Oberon;
 
 
   PROCEDURE Time*(): INTEGER;
-  BEGIN
     RETURN Kernel.Time()
   END Time;
 
-
-  (* garbage collector *)
-  PROCEDURE collect;
-    VAR mod: Modules.Module; alloc, time: INTEGER; le: Log.Entry;
-  BEGIN
-    alloc := Kernel.allocated;
-    time := Procs.Time();
-    mod := Modules.root; LED(21H);
-    WHILE mod # NIL DO
-      IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END;
-      mod := mod.next
-    END;
-    LED(23H);
-    Files.RestoreList; LED(27H);
-    Kernel.Scan; LED(20H);
-    le.event := Log.System; le.cause := Log.SysCollect; le.more0 := Time() - time;
-    le.more1 := alloc; le.more2 := Kernel.allocated;
-    Log.Put(le)
-  END collect;
-
-  PROCEDURE gcc;
-  BEGIN
-    Procs.SetPeriod(GCperiod);
-    REPEAT
-      Procs.Next;
-      IF (gcCount = 0) OR (Kernel.allocated >= GClimit) THEN
-        collect;
-        gcCount := 1;
-      END
-    UNTIL FALSE
-  END gcc;
-
-  PROCEDURE installGC;
-    VAR res: INTEGER;
-  BEGIN
-    heapSize := Kernel.heapLim - Kernel.heapOrg;
-    GClimit := heapSize - (heapSize DIV GClimitDiv);
-    gcCount := 1;
-    NEW(gc);
-    Procs.Init(gc, gcc, gcstack, GCstackHot, GCptype, GCprio, GCid);
-    Procs.Install(gc, res)
-  END installGC;
-
-
-  PROCEDURE Collect*;
-  BEGIN
-    gcCount := 0
-  END Collect;
 
   (* start-up stuff *)
 
@@ -146,27 +80,25 @@ BEGIN
   (* the temp trap handler is still installed *)
   (* no abort interrupts and abort handler are installed *)
   LED(0F1H);
-  Par := Cmds.Par; Call := Cmds.Call; (* EO command handling compatibility *)
+  Par := Cmds.Par; Call := Cmds.Call; (* EPO command handling compatibility *)
   (***
   RTC.Install(RTCspiDevice, RTCchipselect); (* needed for logging *)
   *)
   logRestart;
   LED(0F2H);
-  installGC;
-  LED(0F3H);
-  Procs.InstallAudit;
-  LED(0F4H);
   logMemData(SYSTEM.REG(SP));
-  LED(0F5H);
-  Cmds.Install;
-  LED(0F6H);
+  LED(0F3H);
+  SysInstall.Install;
+  LED(0F4H);
   (* from here, cmds will use most of the original stack, the scheduler (Loop) only keeps a small part
   at the top, see Procs.SchedulerStackSize *)
+  (*
   Errors.Install; (* installs trap and abort handlers, as well as error interrupt handlers *)
   LED(0F7H);
+  *)
   (*Console.WriteLine(""); Console.WriteLine(RTSversion);*)
   (*Calltrace.Select(0);*)
-  collect; (* make sure we have all heap space available for startup loading by Cmds *)
+  GC.Collect; (* make sure we have all heap space available for startup loading by Cmds *)
   Procs.Go (* start scheduler *)
   (* we'll not return here *)
 END Oberon.

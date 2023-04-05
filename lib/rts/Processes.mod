@@ -591,11 +591,17 @@ MODULE Processes;
   END InstallAudit;
 
 
+  PROCEDURE RecoverAudit*;
+  BEGIN
+    InstallAudit
+  END RecoverAudit;
+
+
   PROCEDURE Go*;
     VAR jump: Coroutines.Coroutine; (* will be collected *)
   BEGIN
-    (* Shift stack pointer down, so Coroutines.Reset can set up the top of the stack for the scheduler. *)
-    (* Called from Oberon body and Errors.error, which both use the stack area just below the heap *)
+    (* Shift stack pointer down, so Coroutines.Init can set up the top of the stack for the scheduler. *)
+    (* Called from Oberon body and Errors.???, which both use the stack area just below the heap *)
     (* which is also the scheduler stack, which we want to initialise... *)
     SYSTEM.LDREG(SP, SchedulerStackTop - 128);
     (*Texts.WriteString(W, "go ");*)

@@ -12,106 +12,147 @@ MODULE Start;
   CONST
     Adr = DevAdr.StartAdr;
     NumCmds* = 4;
+    Commands = {0..3};
     NumTables* = 4;
+    Tables = {0..3};
     NumCmdChars = 64;
     InitTable* = 0;
+    InstallMode* = 0;
+    RecoveryMode* = 1;
+    Modes = {0..1};
 
-    SetTableCtrl = 1;
-    SetArmedCtrl = 2;
-    SetDisarmedCtrl = 4;
+    SetTableCtrl = 0100H;
+    SetArmedCtrl = 0200H;
+    SetModeCtrl = 0400H;
 
-    DataShift = 8;
+    DataMask = 040H;
+    ModeDiv = 040H;
+    ModeMask = 01H;
 
-    ArmedStatus = 8;
+    ModeShift = 6;
+    ArmedShift = 7;
+    ArmedStatusBit = 7;
 
   TYPE
     Cmd = ARRAY NumCmdChars OF CHAR;
     CmdTable = ARRAY NumCmds OF Cmd;
 
   VAR
-    cmds: ARRAY NumTables OF CmdTable;
+    cmds: ARRAY 2 OF ARRAY NumTables OF CmdTable;
 
 
   PROCEDURE SetTable*(tbl: INTEGER);
   BEGIN
-    ASSERT(tbl < NumTables);
-    SYSTEM.PUT(Adr, LSL(tbl, DataShift) + SetTableCtrl)
+    ASSERT(tbl IN Tables);
+    SYSTEM.PUT(Adr, SetTableCtrl + tbl)
   END SetTable;
 
 
-  PROCEDURE RecallTable*(VAR tbl: INTEGER);
+  PROCEDURE GetTable*(VAR tbl: INTEGER);
   BEGIN
     SYSTEM.GET(Adr, tbl);
-    tbl := tbl MOD 100H;
-    IF tbl >= NumTables THEN tbl := 0 END
-  END RecallTable;
+    tbl := tbl MOD DataMask;
+    ASSERT(tbl IN Tables)
+  END GetTable;
 
 
-  PROCEDURE GetCmd*(tbl, no: INTEGER; VAR cmd: ARRAY OF CHAR; VAR valid: BOOLEAN);
+  PROCEDURE SetMode*(mode: INTEGER);
+  BEGIN
+    ASSERT(mode IN Modes);
+    SYSTEM.PUT(Adr, SetModeCtrl + LSL(mode, ModeShift))
+  END SetMode;
+
+
+  PROCEDURE GetMode*(VAR mode: INTEGER);
+  BEGIN
+    SYSTEM.GET(Adr, mode);
+    mode := mode DIV ModeDiv MOD ModeMask;
+    ASSERT(mode IN Modes)
+  END GetMode;
+
+
+  PROCEDURE Arm*;
+  BEGIN
+    SYSTEM.PUT(Adr, SetArmedCtrl + LSL(1, ArmedShift));
+    (* SYSTEM.PUT(Adr, SetArmedCtrl + 080H);*)
+  END Arm;
+
+
+  PROCEDURE Disarm*;
+  BEGIN
+    SYSTEM.PUT(Adr, SetArmedCtrl)
+  END Disarm;
+
+
+  PROCEDURE Armed*(): BOOLEAN;
+    RETURN SYSTEM.BIT(Adr, ArmedStatusBit)
+  END Armed;
+
+
+  PROCEDURE GetCmd*(mode, tbl, no: INTEGER; VAR cmd: ARRAY OF CHAR; VAR valid: BOOLEAN);
     VAR i: INTEGER; ch: CHAR;
   BEGIN
-    ASSERT(no < NumCmds); ASSERT(LEN(cmd) >= NumCmdChars);
-    ch := cmds[tbl][no][0];
+    ASSERT(mode IN Modes);
+    ASSERT(tbl IN Tables);
+    ASSERT(no IN Commands);
+    ASSERT(LEN(cmd) >= NumCmdChars);
+    ch := cmds[mode][tbl][no][0];
     valid := ch # 0X;
     IF valid THEN
       i := 0;
       REPEAT
         cmd[i] := ch; INC(i);
-        ch := cmds[tbl][no][i];
+        ch := cmds[mode][tbl][no][i];
       UNTIL ch = 0X;
       cmd[i] := 0X
     END
   END GetCmd;
 
 
-  PROCEDURE Arm*;
-  BEGIN
-    SYSTEM.PUT(Adr, SetArmedCtrl)
-  END Arm;
-
-
-  PROCEDURE Disarm*;
-  BEGIN
-    SYSTEM.PUT(Adr, SetDisarmedCtrl)
-  END Disarm;
-
-
-  PROCEDURE Armed*(): BOOLEAN;
-    RETURN SYSTEM.BIT(Adr, ArmedStatus)
-  END Armed;
-
-
-  PROCEDURE SetCmd*(tbl, no: INTEGER; cmd: Cmd);
+  PROCEDURE SetCmd*(mode, tbl, no: INTEGER; cmd: Cmd);
   BEGIN
     ASSERT(tbl < NumTables); ASSERT(no < NumCmds);
-    cmds[tbl][no] := cmd
+    cmds[mode][tbl][no] := cmd
   END SetCmd;
 
 BEGIN
-  (*
-  cmds[0][0] := "";
-  cmds[0][1] := "System.ShowProcesses";
-  cmds[0][2] := "";
-  cmds[0][3] := "";
-  *)
+  cmds[0][0][0] := "LogView.InstallLogPrint";
+  cmds[0][0][1] := "System.ShowProcesses";
+  cmds[0][0][2] := "";
+  cmds[0][0][3] := "LogView.z3"; (* deliberate error *)
 
-  cmds[0][0] := "LogView.InstallLogPrint";
-  cmds[0][1] := "System.ShowProcesses";
-  cmds[0][2] := "";
-  cmds[0][3] := "LogView.z3";
+  cmds[1][0][0] := "LogView.InstallLogPrint";
+  cmds[1][0][1] := "System.ShowModules";
+  cmds[1][0][2] := "";
+  cmds[1][0][3] := "";
 
-  cmds[1][0] := "LogView.InstallLogPrint";
-  cmds[1][1] := "System.Date";
-  cmds[1][2] := "";
-  cmds[1][3] := "";
+  cmds[0][1][0] := "LogView.InstallLogPrint";
+  cmds[0][1][1] := "System.Date";
+  cmds[0][1][2] := "";
+  cmds[0][1][3] := "";
 
-  cmds[2][0] := "x.y";
-  cmds[2][1] := "x";
-  cmds[2][2] := "";
-  cmds[2][3] := "";
+  cmds[1][1][0] := "LogView.InstallLogPrint";
+  cmds[1][1][1] := "System.Date";
+  cmds[1][1][2] := "";
+  cmds[1][1][3] := "";
 
-  cmds[3][0] := "";
-  cmds[3][1] := "";
-  cmds[3][2] := "";
-  cmds[3][3] := ""
+  cmds[0][2][0] := "x.y";
+  cmds[0][2][1] := "x";
+  cmds[0][2][2] := "";
+  cmds[0][2][3] := "";
+
+  cmds[1][2][0] := "x.y";
+  cmds[1][2][1] := "x";
+  cmds[1][2][2] := "";
+  cmds[1][2][3] := "";
+
+  cmds[0][3][0] := "";
+  cmds[0][3][1] := "";
+  cmds[0][3][2] := "";
+  cmds[0][3][3] := "";
+
+  cmds[1][3][0] := "";
+  cmds[1][3][1] := "";
+  cmds[1][3][2] := "";
+  cmds[1][3][3] := ""
 END Start.

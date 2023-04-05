@@ -10,38 +10,21 @@
 MODULE Errors;
 
   IMPORT
-    SYSTEM, Kernel, Modules, SysCtrl, (*Watchdog,*) (*Interrupts,*) Procs := Processes, (*StackMonitor,*) Log, Start (*, Calltrace, CalltraceView*);
+    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start;
 
   CONST
-    (* registers *)
-    SP = 14;
     LNK = 15;
 
   VAR
     handlingError: BOOLEAN;
     le: Log.Entry;
 
+
   PROCEDURE restartSystem;
   BEGIN
-    (*REPEAT UNTIL RS232.TxEmpty(Console.Dev);*)
-    SysCtrl.IncNumRestarts;
     SysCtrl.RestartSystem;
     REPEAT UNTIL FALSE
   END restartSystem;
-
-
-  PROCEDURE error;
-  BEGIN
-    (* from here, the scheduler stack is used *)
-    (* we need to get out of the error-inducing coroutine's stack, so any corrective measures, such as *)
-    (* resetting the coroutine, and this code don't interfere with each other *)
-    SYSTEM.LDREG(SP, Procs.SchedulerStackTop - 8); (* 8: for LNK, x; stacked LNK will contain garbage *)
-
-    Start.Arm;
-    restartSystem;
-
-  END error;
-
 
   (* trap and abort handlers *)
   (* both handlers run in the offending process' stack *)
@@ -74,6 +57,76 @@ MODULE Errors;
 
   PROCEDURE abort;
   BEGIN
+
+
+
+  END abort;
+
+
+  PROCEDURE trap(VAR a: INTEGER; b: INTEGER);
+    VAR adr, trapNo, trapInstruction: INTEGER;
+  BEGIN
+    (* cannot set the stack here, as trap 0 is being used in "normal" code for NEW *)
+    adr := SYSTEM.REG(LNK); (* trap was called via BL, hence LNK contains the return address = offending location + 4 *)
+    DEC(adr, 4);
+    SYSTEM.GET(adr, trapInstruction); trapNo := trapInstruction DIV 10H MOD 10H; (*trap number*)
+    IF trapNo = 0 THEN (* execute NEW *)
+      Kernel.New(a, b)
+    ELSE (* error trap *)
+      IF ~handlingError THEN
+        handlingError := TRUE;
+        le.cause := trapNo;
+        le.more0 := trapInstruction DIV 100H MOD 10000H; (* pos *)
+        le.event := Log.Trap;
+        le.adr0 := adr;
+        setModule(le);
+        setProc(le);
+        Log.Put(le);
+        Start.Arm;
+        restartSystem
+      ELSE (* trap in error handling *)
+        le.event := Log.System;
+        le.cause := Log.SysErrorTrap;
+        le.more0 := trapNo;
+        le.more2 := trapInstruction DIV 100H MOD 10000H;
+        le.adr0 := adr;
+        setModule(le);
+        Log.Put(le);
+        Start.Arm;
+        restartSystem
+      END
+    END
+  END trap;
+
+
+  PROCEDURE Install*;
+  BEGIN
+    handlingError := FALSE;
+    Kernel.Install(SYSTEM.ADR(trap), 20H);
+  END Install;
+
+  PROCEDURE Recover*;
+  END Recover;
+
+END Errors.
+
+(*
+  PROCEDURE error;
+  BEGIN
+    (* from here, the scheduler stack is used *)
+    (* we need to get out of the error-inducing coroutine's stack, so any corrective measures, such as *)
+    (* resetting the coroutine, and this code don't interfere with each other *)
+    SYSTEM.LDREG(SP, Procs.SchedulerStackTop - 8); (* 8: for LNK, x; stacked LNK will contain garbage *)
+
+    Start.Arm;
+    restartSystem;
+
+  END error;
+*)
+
+(*
+  PROCEDURE abort;
+  BEGIN
     (*
     Calltrace.Pop(x); (* remove the invalid LNK value *)
     *)
@@ -101,56 +154,4 @@ MODULE Errors;
       restartSystem
     END
   END abort;
-
-
-  PROCEDURE trap(VAR a: INTEGER; b: INTEGER);
-    VAR adr, trapNo, trapInstruction: INTEGER;
-  BEGIN
-    (* cannot set the stack here, as trap 0 is being used in "normal" code for NEW *)
-    adr := SYSTEM.REG(LNK); (* trap was called via BL, hence LNK contains the return address = offending location + 4 *)
-    DEC(adr, 4);
-    SYSTEM.GET(adr, trapInstruction); trapNo := trapInstruction DIV 10H MOD 10H; (*trap number*)
-    IF trapNo = 0 THEN (* execute NEW *)
-      Kernel.New(a, b)
-    ELSE (* error trap *)
-      IF ~handlingError THEN
-        handlingError := TRUE;
-        le.cause := trapNo;
-        le.more0 := trapInstruction DIV 100H MOD 10000H; (* pos *)
-        le.event := Log.Trap;
-        le.adr0 := adr;
-        setModule(le); setProc(le);
-        Log.Put(le);
-        error;
-
-        (* we should not return here *)
-        le.event := Log.System; le.cause := Log.SysFault;
-        Log.Put(le);
-        le.cause := Log.SysRestart;
-        Log.Put(le);
-        restartSystem
-      ELSE (* error in error handling, bail out *)
-        le.event := Log.System; le.cause := Log.SysErrorTrap;
-        le.more0 := trapNo;
-        le.more2 := trapInstruction DIV 100H MOD 10000H;
-        le.adr0 := adr;
-        setModule(le);
-        Log.Put(le);
-        (* restart logging done upon restart, cf. module Oberon *)
-        restartSystem
-      END
-    END
-  END trap;
-
-
-  PROCEDURE Install*;
-  BEGIN
-    handlingError := FALSE;
-
-    (* install trap and abort handlers *)
-    Kernel.Install(SYSTEM.ADR(trap), 20H);
-    Kernel.Install(SYSTEM.ADR(abort), 0);
-
-  END Install;
-
-END Errors.
+*)

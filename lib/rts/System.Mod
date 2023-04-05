@@ -14,7 +14,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
   2021-10: * Date changed to v8.0 variant, with correction
 **)
 
-  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Texts, Oberon, Console := ConsoleC, Procs := Processes;
+  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Texts, Oberon, Console := ConsoleC, Procs := Processes, GC;
 
   VAR
     W: Texts.Writer;
@@ -73,7 +73,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
 
   PROCEDURE Collect*;
   BEGIN Texts.WriteString(W, "System.Collect"); EndLine;
-    Oberon.Collect
+    GC.Collect
   END Collect;
 
   (* ------------- Toolbox for module management ---------------*)
@@ -90,7 +90,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
   BEGIN Texts.WriteString(W, "System.Free"); EndLine;
     Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     WHILE S.class = Texts.Name DO Free1(S); Texts.Scan(S) END;
-    Oberon.Collect
+    GC.Collect
   END Free;
 
   (* ------------- Toolbox of file system ---------------*)
@@ -275,7 +275,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
     Texts.WriteString(W, "  MemLim       "); Texts.WriteHex(W, Kernel.MemLim); EndLine;
     Texts.WriteString(W, "  stackOrg     "); Texts.WriteHex(W, Kernel.stackOrg); EndLine;
     Texts.WriteString(W, "  stackSize    "); Texts.WriteHex(W, Kernel.stackSize);  Texts.WriteInt(W, Kernel.stackSize, 8); EndLine;
-    Texts.WriteString(W, "  GC limit      "); Texts.WriteInt(W, Oberon.GClimit, 8); EndLine;
+    Texts.WriteString(W, "  GC limit      "); Texts.WriteInt(W, GC.GClimit, 8); EndLine;
     Texts.WriteString(W, "  Eval          ");
     Texts.WriteInt(W, microSeconds(Procs.Eval), 8);
     Texts.WriteInt(W, microSeconds(Procs.MaxEval), 8); EndLine;

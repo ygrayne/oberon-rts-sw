@@ -7,7 +7,7 @@
 
 MODULE LogView;
 
-  IMPORT SYSTEM, Log, Modules, Texts, Console := ConsoleC, SysCtrl;
+  IMPORT SYSTEM, Log, Modules, Texts, Console := ConsoleC, RS232, SysCtrl;
 
   VAR
     W: Texts.Writer;
@@ -147,7 +147,8 @@ MODULE LogView;
       reportProcess(le)
     ELSE
       Texts.WriteString(W, " SYS ERROR: inconsistent data: log event")
-    END
+    END;
+    REPEAT UNTIL RS232.TxEmpty(Console.Dev)
   END PrintEntry;
 
 

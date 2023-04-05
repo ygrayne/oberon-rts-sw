@@ -11,6 +11,7 @@ MODULE Build;
     Oberon,
     System,
     LogView,
-    BootFile;
+    BootFile,
+    StartCfg;
 
 END Build.

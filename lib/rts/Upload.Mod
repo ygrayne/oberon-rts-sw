@@ -68,7 +68,6 @@ MODULE Upload;
       F: Files.File; R: Files.Rider;
       buf: ARRAY BlockLength OF BYTE;
   BEGIN
-    LED(30H);
     recString(fileName);
     recInt(fileDate);
     F := Files.New(fileName);
@@ -84,8 +83,7 @@ MODULE Upload;
       UNTIL x < BlockLength;
       Files.Register(F);
       RS232.PutByte(dev, ACK)
-    END;
-    LED(0)
+    END
   END Run;
 
 BEGIN
