@@ -11,18 +11,16 @@ Here is the sister repo for the corresponding hardware: [oberon-rts-hw](https://
 
 ## Current Status
 
-* 2023-03-29: The simplified Oberon RTS system builds and runs on platforms P3 and P4 as provided by the designs in the hardware repo ("SD card swap compatible").
+* 2023-04-05: (re-) implemented the watchdog and the stack overflow monitor. Unified error signals from the hardware with the trap handling. The errors result in a reset and reload of the system for now, which is one possible corrective measure, but a more subtle way, where the (some) processes recover and can continue will be added. Need to rethink the processes first. Good thing is that the logging of all errors is back.
+
 * 2023-03-30: Added FPGA-based logging facility.
+
+* 2023-03-29: The simplified Oberon RTS system builds and runs on platforms P3 and P4 as provided by the designs in the hardware repo ("SD card swap compatible").
 
 
 ## Next Up
 
-* Watchdog
-* Stack overflow monitor (maybe not yet)
-
-Devices such as the watchdog and the stack overflow monitor are needed so I can trigger "asynchrounous" errors from the hardware, that is, errors that are not detected by the software itself, ie. traps. I want to rethink the whole error handling concept.
-
-The stack overflow monitor will need a change in the CPU to "pull out" the stack register on hardware level. Not sure if I am ready and sufficiently confident with the THM architecture yet. :)
+* Rethink processes and scheduling. Needs an overhaul, and possibly some simplification.
 
 
 ## Architectures
@@ -44,6 +42,8 @@ The Project Oberon compiler and the Extended Oberon compiler are not supported. 
 ## The Simplified, Minimum System
 
 Many modules have been removed and don't even appear yet in the repo. In the simplified modules, the relevant parts have been commented out, or removed. **It's a functioning mess.**
+
+Getting slowly better, though. :)
 
 
 ## Directory Structure
