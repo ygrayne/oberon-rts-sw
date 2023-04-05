@@ -566,7 +566,7 @@ MODULE Processes;
 
 
   PROCEDURE auditc;
-    VAR logged: BOOLEAN;
+    VAR logged: BOOLEAN; addr: INTEGER;
   BEGIN
     logged := FALSE;
     auditCnt := AuditCount;
@@ -575,8 +575,13 @@ MODULE Processes;
       Next;
       DEC(auditCnt);
       IF auditCnt = 0 THEN
-        SysCtrl.ResetNumRestarts; SysCtrl.ResetErrorState;
-        IF ~logged THEN le.event := Log.System; le.cause := Log.SysOK; SysCtrl.GetReg(le.more0); Log.Put(le); logged := TRUE END;
+        IF ~logged THEN
+          SysCtrl.SetError(0, 0, 0);
+          le.event := Log.System; le.cause := Log.SysOK;
+          SysCtrl.GetReg(le.more0);
+          Log.Put(le);
+          logged := TRUE
+        END;
         auditCnt := AuditCount
       END
     UNTIL FALSE

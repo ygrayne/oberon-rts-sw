@@ -10,24 +10,20 @@
 MODULE Errors;
 
   IMPORT
-    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start;
+    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start, DebugOut;
 
   CONST
     LNK = 15;
 
   VAR
-    handlingError: BOOLEAN;
     le: Log.Entry;
 
 
-  PROCEDURE restartSystem;
+  PROCEDURE resetSystem;
   BEGIN
-    SysCtrl.RestartSystem;
+    SysCtrl.ResetSystem;
     REPEAT UNTIL FALSE
-  END restartSystem;
-
-  (* trap and abort handlers *)
-  (* both handlers run in the offending process' stack *)
+  END resetSystem;
 
   PROCEDURE setModule(VAR le: Log.Entry);
     VAR mod: Modules.Module; adr: INTEGER;
@@ -55,54 +51,67 @@ MODULE Errors;
   END setProc;
 
 
-  PROCEDURE abort;
+  PROCEDURE reset; (* SP = stackOrg *)
+    VAR errorNo, addr, trapInstruction, abortNo, trapNo, trapPos: INTEGER;
   BEGIN
+    SysCtrl.GetError(errorNo, addr);
 
+    DebugOut.WriteLine("abort", "", "", -1);
+    DebugOut.WriteLine("errorNo", "", "", errorNo);
+    DebugOut.WriteLine("address", "", "", addr);
 
+    IF addr # 0 THEN
+      IF (errorNo = 0) OR (errorNo >= 010H) THEN (* abort *)
+        (* note: trap 0 is not an error, so errorNo = 0 means abortNo = 0 *)
+        abortNo := errorNo DIV 010H;
+        DebugOut.WriteLine("abort no", "", "", abortNo);
+        le.adr0 := addr;
+        le.cause := abortNo;
+        le.event := Log.Abort;
+        setModule(le);
+        le.procId := "***";
+        Log.Put(le)
+      ELSE (* trap *)
+        SYSTEM.GET(addr, trapInstruction);
+        trapNo := trapInstruction DIV 10H MOD 10H;
+        trapPos := trapInstruction DIV 100H MOD 10000H;
+        le.cause := trapNo;
+        le.more0 := trapPos;
+        le.adr0 := addr;
+        setModule(le);
+        le.procId := "***";
+        Log.Put(le)
+      END
+    END;
 
-  END abort;
+    (* at this point we could also reset processes and whatnot, and just restart scheduling *)
+    Start.Arm;
+    SysCtrl.SetReload;
+    resetSystem
+  END reset;
 
 
   PROCEDURE trap(VAR a: INTEGER; b: INTEGER);
     VAR adr, trapNo, trapInstruction: INTEGER;
   BEGIN
-    (* cannot set the stack here, as trap 0 is being used in "normal" code for NEW *)
     adr := SYSTEM.REG(LNK); (* trap was called via BL, hence LNK contains the return address = offending location + 4 *)
     DEC(adr, 4);
     SYSTEM.GET(adr, trapInstruction); trapNo := trapInstruction DIV 10H MOD 10H; (*trap number*)
     IF trapNo = 0 THEN (* execute NEW *)
       Kernel.New(a, b)
     ELSE (* error trap *)
-      IF ~handlingError THEN
-        handlingError := TRUE;
-        le.cause := trapNo;
-        le.more0 := trapInstruction DIV 100H MOD 10000H; (* pos *)
-        le.event := Log.Trap;
-        le.adr0 := adr;
-        setModule(le);
-        setProc(le);
-        Log.Put(le);
-        Start.Arm;
-        restartSystem
-      ELSE (* trap in error handling *)
-        le.event := Log.System;
-        le.cause := Log.SysErrorTrap;
-        le.more0 := trapNo;
-        le.more2 := trapInstruction DIV 100H MOD 10000H;
-        le.adr0 := adr;
-        setModule(le);
-        Log.Put(le);
-        Start.Arm;
-        restartSystem
-      END
+      SysCtrl.SetError(0, trapNo, adr);
+      SysCtrl.SetNoReload;
+      resetSystem
     END
   END trap;
 
 
   PROCEDURE Install*;
   BEGIN
-    handlingError := FALSE;
     Kernel.Install(SYSTEM.ADR(trap), 20H);
+    Kernel.Install(SYSTEM.ADR(reset), 0H);
+    SysCtrl.SetNoReload (* all resets go through reset proc above *)
   END Install;
 
   PROCEDURE Recover*;

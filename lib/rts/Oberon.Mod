@@ -47,12 +47,11 @@ MODULE Oberon;
   (* start-up stuff *)
 
   PROCEDURE logRestart;
-    VAR le: Log.Entry;
+    VAR le: Log.Entry; addr: INTEGER;
   BEGIN
     le.event := Log.System; le.cause := Log.SysRestart;
     SysCtrl.GetReg(le.more0);
-    SysCtrl.GetRestartCause(le.more1);
-    SysCtrl.GetErrorState(le.more2);
+    SysCtrl.GetError(le.more1, addr);
     Log.Put(le);
     le.event := Log.System;
     IF RTC.Installed THEN
@@ -64,13 +63,14 @@ MODULE Oberon;
   END logRestart;
 
 
-  PROCEDURE logMemData(SP: INTEGER);
-    VAR x: INTEGER; le: Log.Entry;
+  PROCEDURE logMemData;
+    VAR x, stackPtr: INTEGER; le: Log.Entry;
   BEGIN
     le.event := Log.System; le.cause := Log.SysMemStart;
-    StackMonitor.GetMin(x);
+    stackPtr := SYSTEM.REG(SP);
+    StackMonitor.GetMin(x); (* lowest stack pointer value during startup *)
     le.more0 := Kernel.stackOrg - x; (* startup stack used *)
-    le.more1 := Kernel.stackOrg - SP; (* stack pointer before loading cmds *)
+    le.more1 := Kernel.stackOrg - stackPtr; (* stack pointer before loading cmds *)
     le.more2 := Kernel.allocated;  (* startup heap used *)
     Log.Put(le)
   END logMemData;
@@ -82,23 +82,22 @@ BEGIN
   LED(0F1H);
   Par := Cmds.Par; Call := Cmds.Call; (* EPO command handling compatibility *)
   (***
-  RTC.Install(RTCspiDevice, RTCchipselect); (* needed for logging *)
+  RTC.Install(RTCspiDevice, RTCchipselect); (* nice for logging *)
   *)
   logRestart;
   LED(0F2H);
-  logMemData(SYSTEM.REG(SP));
+  logMemData;
   LED(0F3H);
   SysInstall.Install;
   LED(0F4H);
+
   (* from here, cmds will use most of the original stack, the scheduler (Loop) only keeps a small part
   at the top, see Procs.SchedulerStackSize *)
-  (*
-  Errors.Install; (* installs trap and abort handlers, as well as error interrupt handlers *)
-  LED(0F7H);
-  *)
-  (*Console.WriteLine(""); Console.WriteLine(RTSversion);*)
+
   (*Calltrace.Select(0);*)
+
   GC.Collect; (* make sure we have all heap space available for startup loading by Cmds *)
+  LED(0F5H);
   Procs.Go (* start scheduler *)
   (* we'll not return here *)
 END Oberon.
