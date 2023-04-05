@@ -12,7 +12,7 @@
   --
   Uses an 8 bit wide buffer in the FPGA. A 32 bit wide variant might be faster.
   --
-  (c) 2021 -2023 Gray, gray@grayraven.org
+  (c) 2021 - 2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences
 **)
 

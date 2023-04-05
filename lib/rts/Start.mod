@@ -26,11 +26,8 @@ MODULE Start;
     SetModeCtrl = 0400H;
 
     DataMask = 040H;
-    ModeDiv = 040H;
-    ModeMask = 01H;
 
-    ModeShift = 6;
-    ArmedShift = 7;
+    ModeStatusBit = 6;
     ArmedStatusBit = 7;
 
   TYPE
@@ -59,21 +56,23 @@ MODULE Start;
   PROCEDURE SetMode*(mode: INTEGER);
   BEGIN
     ASSERT(mode IN Modes);
-    SYSTEM.PUT(Adr, SetModeCtrl + LSL(mode, ModeShift))
+    SYSTEM.PUT(Adr, SetModeCtrl + LSL(mode, ModeStatusBit))
   END SetMode;
 
 
   PROCEDURE GetMode*(VAR mode: INTEGER);
   BEGIN
-    SYSTEM.GET(Adr, mode);
-    mode := mode DIV ModeDiv MOD ModeMask;
-    ASSERT(mode IN Modes)
+    IF SYSTEM.BIT(Adr, ModeStatusBit) THEN
+      mode := 1
+    ELSE
+      mode := 0
+    END
   END GetMode;
 
 
   PROCEDURE Arm*;
   BEGIN
-    SYSTEM.PUT(Adr, SetArmedCtrl + LSL(1, ArmedShift));
+    SYSTEM.PUT(Adr, SetArmedCtrl + LSL(1, ArmedStatusBit));
     (* SYSTEM.PUT(Adr, SetArmedCtrl + 080H);*)
   END Arm;
 

@@ -1,3 +1,12 @@
+(**
+  Garbage collector
+  --
+  Base/origin: Embedded Project Oberon, module Oberon
+  --
+  2012 - 2023 Gray, gray@grayraven.org
+  https://oberon-rts.org/licences
+**)
+
 MODULE GC;
 
   IMPORT Modules, Kernel, Files, Procs := Processes, Log;
@@ -69,6 +78,5 @@ MODULE GC;
   BEGIN
     Install
   END Recover;
-
 
 END GC.
