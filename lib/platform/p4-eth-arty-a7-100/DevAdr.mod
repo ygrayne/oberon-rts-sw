@@ -26,7 +26,7 @@ MODULE DevAdr;
     StartAdr* = -188;
 
     (* system ctrl register *)
-    SysCtrlRegAdr* = -68;
+    SysCtrlRegAdr* = -72;
 
     (* watchdog *)
     WatchdogAdr* = -112;

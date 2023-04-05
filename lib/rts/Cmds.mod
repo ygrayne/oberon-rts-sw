@@ -116,7 +116,7 @@ MODULE Cmds;
   PROCEDURE cmdc;
   (* process code *)
     CONST REC = 21X;
-    VAR res, cnt: INTEGER; ch: CHAR; valid: BOOLEAN; i, tbl: INTEGER;
+    VAR res, cnt, mode: INTEGER; ch: CHAR; valid: BOOLEAN; i, tbl: INTEGER;
   BEGIN
     Procs.SetPeriod(PeriodC);
     Procs.SetWatchdogOff;
@@ -125,12 +125,15 @@ MODULE Cmds;
       IF RS232.GetAvailable(Console.Dev, ch) THEN
         IF ch = REC THEN
           REPEAT
+            LED(09H);
             Upload.Run;
-            cnt := 4000000; (* workaround for upload timeout issue with multiple files *)
+            cnt := 1000000; (* workaround for upload timeout issue with multiple files *)
             REPEAT
-              valid := RS232.GetAvailable(Console.Dev, ch) & (ch = REC); DEC(cnt)
-            UNTIL valid OR (cnt = 0)
-          UNTIL cnt = 0
+              valid := RS232.GetAvailable(Console.Dev, ch) & (ch = REC); DEC(cnt);
+              LED(0BH);
+            UNTIL valid OR (cnt = 0);
+          UNTIL cnt = 0;
+          LED(0FH);
         ELSE
           Par.text.string[0] := ch;
           getCommand(1);
@@ -142,10 +145,18 @@ MODULE Cmds;
           END
         END
       ELSIF Start.Armed() THEN
-        Start.RecallTable(tbl);
-        Texts.WriteLn(W); Texts.WriteString(W, "Loading start table "); Texts.WriteInt(W, tbl, 0); Texts.WriteLn(W);
+        Start.GetMode(mode);
+        Texts.WriteLn(W);
+        IF mode = Start.InstallMode THEN
+          Texts.WriteString(W, "Install mode")
+        ELSE
+          Texts.WriteString(W, "Recovery mode")
+        END;
+        Texts.WriteLn(W);
+        Start.GetTable(tbl);
+        Texts.WriteString(W, "Loading restart table "); Texts.WriteInt(W, tbl, 0); Texts.WriteLn(W);
         FOR i := 0 TO Start.NumCmds - 1 DO
-          Start.GetCmd(tbl, i, Par.text.string, valid);
+          Start.GetCmd(mode, tbl, i, Par.text.string, valid);
           IF valid THEN
             Texts.WriteString(W, "=> "); Texts.WriteString(W, Par.text.string); Texts.WriteLn(W);
             Call(Par.text.string, res);
@@ -172,6 +183,13 @@ MODULE Cmds;
       Installed := res = Procs.OK
     END
   END Install;
+
+
+  PROCEDURE Recover*;
+  BEGIN
+    Installed := FALSE;
+    Install
+  END Recover;
 
 
 BEGIN

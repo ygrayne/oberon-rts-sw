@@ -7,27 +7,17 @@
 
 MODULE SysCtrl;
 
-  IMPORT SYSTEM, DevAdr;
+  IMPORT SYSTEM, DevAdr, DebugOut;
 
   CONST
     SysCtrlRegAdr = DevAdr.SysCtrlRegAdr;  (* SCR *)
-    (*SPCadr = DevAdr.SysCtrlSPCadr;        (* stored PC value while handling interrupt, ie. SPC *)*)
+    SysCtrlErrAdr = SysCtrlRegAdr + 4;
 
-    (* bits *)
-    SysReset*        = 0;    (* = 1: reset system *)
-    SysResetAll*     = 1;    (* = 1: reset all systems *)
-    SysIntAbort*     = 3;
+    (* SCR bits *)
+    SysNoReload*     = 0;    (* = 1: bootloader will skip loading from disk *)
+    SysReset*        = 1;    (* = 1: reset system *)
 
-    ErrorState0 = 4;  (* lowest bit of error state value *)
-    ErrorState1 = 5;  (* highest bit *)
-
-    RestartCnt0 = 8;  (* lowest bit of the system restart counter *)
-    RestartCnt1 = 9;  (* highest bit *)
-
-    RestartCause0 = 12; (* lowest bit of the system restart cause value *)
-    RestartCause1 = 15; (* highest bit *)
-
-    (* abort causes *)
+    (* abort causes -- wired in FPGA, see sys ctrl*)
     WatchdogAbort* = 0;
     KillAbort* = 1;
     StackOverflowAbort* = 2;
@@ -40,10 +30,6 @@ MODULE SysCtrl;
     RestartSWother* = 4;
     RestartStackOvfl* = 8;
 
-  VAR
-    AbortAdr*: INTEGER;     (* address where abort occurred + 4 *)
-    AbortCause*: INTEGER;   (* abort cause as reported by 'AbortInt' *)
-
 
   (* raw register ops *)
   PROCEDURE GetReg*(VAR reg: INTEGER);
@@ -51,22 +37,59 @@ MODULE SysCtrl;
     SYSTEM.GET(SysCtrlRegAdr, reg)
   END GetReg;
 
-
   PROCEDURE SetReg*(reg: INTEGER);
   BEGIN
     SYSTEM.PUT(SysCtrlRegAdr, reg)
   END SetReg;
 
 
-  (* system restart *)
-  PROCEDURE RestartSystem*;
+  (* reset and restart *)
+  PROCEDURE ResetSystem*;
     VAR x: INTEGER;
   BEGIN
     SYSTEM.GET(SysCtrlRegAdr, x);
     SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) + {SysReset}))
-  END RestartSystem;
+  END ResetSystem;
+
+  PROCEDURE SetNoReload*;
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(SysCtrlRegAdr, x);
+    SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) + {SysNoReload}));
+    SYSTEM.GET(SysCtrlRegAdr, x);
+    DebugOut.WriteLine("no reload", "", "", x)
+  END SetNoReload;
+
+  PROCEDURE SetReload*;
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(SysCtrlRegAdr, x);
+    SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) - {SysNoReload}));
+    SYSTEM.GET(SysCtrlRegAdr, x);
+    DebugOut.WriteLine("reload", "", "", x)
+  END SetReload;
 
 
+  (* error handling *)
+  PROCEDURE SetError*(abortNo, trapNo, addr: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.PUT(SysCtrlErrAdr, LSL(addr, 8) + LSL(abortNo, 4) + trapNo);
+    SYSTEM.GET(SysCtrlErrAdr, x);
+    DebugOut.WriteLine("reload", "", "", x)
+  END SetError;
+
+  PROCEDURE GetError*(VAR errorNo, addr: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(SysCtrlErrAdr, x);
+    errorNo := x MOD 0100H;
+    addr := LSR(x, 8)
+  END GetError;
+
+END SysCtrl.
+
+(***
   PROCEDURE RestartAllSystems*;
     VAR x: INTEGER;
   BEGIN
@@ -155,5 +178,4 @@ MODULE SysCtrl;
     rstCause := BFX(scr, RestartCause1, RestartCause0);
     errStat := BFX(scr, ErrorState1, ErrorState0)
   END Decode;
-
-END SysCtrl.
+  *)

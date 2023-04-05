@@ -7,7 +7,7 @@
 
 MODULE LogView;
 
-  IMPORT SYSTEM, Log, Modules, Texts, Console := ConsoleC, SysCtrl;
+  IMPORT SYSTEM, Log, Modules, Texts, Console := ConsoleC, RS232, SysCtrl;
 
   VAR
     W: Texts.Writer;
@@ -24,7 +24,7 @@ MODULE LogView;
     IF le.cause = SysCtrl.WatchdogAbort THEN
       Texts.WriteString(W, " watchdog")
     ELSIF le.cause = SysCtrl.KillAbort THEN
-      Texts.WriteString(W, " kill button")
+      Texts.WriteString(W, " reset button")
     ELSIF le.cause = SysCtrl.StackOverflowAbort THEN
       Texts.WriteString(W, " stack overflow");
     ELSIF le.cause = SysCtrl.NotAliveAbort THEN
@@ -63,7 +63,8 @@ MODULE LogView;
     ELSIF le.cause = Log.SysRestart THEN
       Texts.WriteString(W, " SYS RESTART: load system.");
       Texts.WriteString(W, " SCR:"); Texts.WriteHex(W, le.more0);
-      Texts.WriteString(W, " error state: "); Texts.WriteInt(W, le.more2, 0);
+      Texts.WriteString(W, " ERR:"); Texts.WriteHex(W, le.more1);
+      (*
       Texts.WriteString(W, "  ");
       IF le.more1 = SysCtrl.RestartFPGA THEN
         Texts.WriteString(W, "FPGA")
@@ -78,6 +79,7 @@ MODULE LogView;
       ELSE
         Texts.WriteString(W, "unknown")
       END;
+      *)
     ELSIF le.cause = Log.SysHalt THEN
       Texts.WriteString(W, " SYS HALT")
     ELSIF le.cause = Log.SysFault THEN
@@ -91,7 +93,8 @@ MODULE LogView;
       Texts.WriteString(W, " pos "); Texts.WriteInt(W, le.more2, 0);
       Texts.WriteString(W, " line "); Texts.WriteInt(W, le.more1, 0)
     ELSIF le.cause = Log.SysOK THEN
-      Texts.WriteString(W, " SYS OK SCR:"); Texts.WriteHex(W, le.more0)
+      Texts.WriteString(W, " SYS OK SCR:"); Texts.WriteHex(W, le.more0);
+      Texts.WriteString(W, " ERR:"); Texts.WriteHex(W, le.more1)
     ELSIF le.cause = Log.SysProcsFull THEN
       Texts.WriteString(W, " SYS too many procs: "); Texts.WriteString(W, le.procId);
     ELSIF le.cause = Log.SysProcsChange THEN
@@ -147,7 +150,8 @@ MODULE LogView;
       reportProcess(le)
     ELSE
       Texts.WriteString(W, " SYS ERROR: inconsistent data: log event")
-    END
+    END;
+    REPEAT UNTIL RS232.TxEmpty(Console.Dev)
   END PrintEntry;
 
 
