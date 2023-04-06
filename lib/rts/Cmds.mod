@@ -9,9 +9,9 @@
   for compatibility with existing modules.
   --
   The processes' stack takes over most of the original stack space after loading.
-  The scheduler will only use the top of the stack space, see SchedulerStackSize in the Threads module.
+  The loop/scanner will only use the top of the stack space, see KoopStackSize in the Processes module.
   --
-  2020 - 2022 by Gray, gray@grayraven.org
+  2020 - 2023 by Gray, gray@grayraven.org
   https://oberon-rts.org/licences
 **)
 
@@ -20,9 +20,6 @@ MODULE Cmds;
   IMPORT Texts, Modules, Console := ConsoleC, RS232, Kernel, Procs := Processes, Log, Upload, Start;
 
   CONST
-    (* process defs *)
-    Ptype = Procs.SystemProc;
-    PeriodC = 4;
     Prio = 3;
     Pid = "cmd";
     StackHotSize = 512;
@@ -118,8 +115,8 @@ MODULE Cmds;
     CONST REC = 21X;
     VAR res, cnt, mode: INTEGER; ch: CHAR; valid: BOOLEAN; i, tbl: INTEGER;
   BEGIN
-    Procs.SetPeriod(PeriodC);
-    Procs.SetWatchdogOff;
+    Procs.SetNoWatchdog;
+    Procs.SetName(Pid);
     REPEAT
       Procs.Next;
       IF RS232.GetAvailable(Console.Dev, ch) THEN
@@ -173,13 +170,12 @@ MODULE Cmds;
 
 
   PROCEDURE Install*;
-    VAR res, stackAdr, stackSize: INTEGER;
+    VAR res, pid, stackAdr, stackSize: INTEGER;
   BEGIN
     IF ~Installed THEN
       stackAdr := Kernel.stackOrg - Kernel.stackSize;
-      stackSize := Procs.SchedulerStackBottom - stackAdr;
-      Procs.InitRaw(p, cmdc, stackAdr, stackSize, StackHotSize, Ptype, Prio, Pid);
-      Procs.Install(p, res);
+      stackSize := Procs.LoopStackBottom - stackAdr;
+      Procs.Init(p, cmdc, stackAdr, stackSize, StackHotSize, Prio, pid, res);
       Installed := res = Procs.OK
     END
   END Install;

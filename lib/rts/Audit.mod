@@ -23,6 +23,7 @@ MODULE Audit;
     auditStack: ARRAY 256 OF BYTE;
     auditCnt: INTEGER;
     le: Log.Entry;
+    auditPid: INTEGER;
 
 
   PROCEDURE auditc;
@@ -31,6 +32,7 @@ MODULE Audit;
     logged := FALSE;
     auditCnt := AuditCount;
     Procs.SetPeriod(AuditPeriod);
+    Procs.SetName(AuditPrId);
     REPEAT
       Procs.Next;
       DEC(auditCnt);
@@ -52,8 +54,8 @@ MODULE Audit;
     VAR res: INTEGER;
   BEGIN
     NEW(audit);
-    Procs.Init(audit, auditc, auditStack, AuditStackHotSize, Procs.SystemProc, AuditPrio, AuditPrId);
-    Procs.Install(audit, res)
+    Procs.New(audit, auditc, auditStack, AuditStackHotSize, AuditPrio, auditPid, res);
+    ASSERT(res = Procs.OK)
   END Install;
 
 

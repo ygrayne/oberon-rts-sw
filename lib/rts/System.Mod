@@ -12,6 +12,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
   2021-05: * extended System.Watch with scheduler run-time data
            * extended System.ShowProcesses with process run-time data
   2021-10: * Date changed to v8.0 variant, with correction
+  2023-04: * Remove process run-time data from System.Watch
 **)
 
   IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Texts, Oberon, Console := ConsoleC, Procs := Processes, GC;
@@ -244,23 +245,9 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
 
     (* ------------- Toolbox for system inspection ---------------*)
 
-  PROCEDURE microSeconds(clockCycles: INTEGER): INTEGER;
-    CONST ZeroOutLimit = 7FFFFFFFH DIV 64; (* clock period can be max 64 *)
-    VAR us: INTEGER;
-  BEGIN
-    IF clockCycles < ZeroOutLimit THEN
-      us := (clockCycles * Procs.ClockPeriod) DIV 1000
-    ELSE
-      us := (clockCycles DIV 1000) * Procs.ClockPeriod
-    END
-    RETURN us
-  END microSeconds;
-
-
   PROCEDURE Watch*;
   BEGIN
     Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
-    Texts.WriteString(W, "  Clock freq    "); Texts.WriteInt(W, Procs.ClockFreq, 8); Texts.WriteInt(W, Procs.ClockPeriod, 8); EndLine;
     Texts.WriteString(W, "  Total RAM     "); Texts.WriteInt(W, Kernel.MemLim, 8); EndLine;
     Texts.WriteString(W, "  Modules space "); Texts.WriteInt(W, Kernel.heapOrg - Kernel.stackSize, 8);
     Texts.WriteInt(W, Modules.AllocPtr, 8);
@@ -275,14 +262,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
     Texts.WriteString(W, "  MemLim       "); Texts.WriteHex(W, Kernel.MemLim); EndLine;
     Texts.WriteString(W, "  stackOrg     "); Texts.WriteHex(W, Kernel.stackOrg); EndLine;
     Texts.WriteString(W, "  stackSize    "); Texts.WriteHex(W, Kernel.stackSize);  Texts.WriteInt(W, Kernel.stackSize, 8); EndLine;
-    Texts.WriteString(W, "  GC limit      "); Texts.WriteInt(W, GC.GClimit, 8); EndLine;
-    Texts.WriteString(W, "  Eval          ");
-    Texts.WriteInt(W, microSeconds(Procs.Eval), 8);
-    Texts.WriteInt(W, microSeconds(Procs.MaxEval), 8); EndLine;
-    Texts.WriteString(W, "  Exec          ");
-    Texts.WriteInt(W, microSeconds(Procs.Exec), 8); Texts.WriteInt(W, microSeconds(Procs.MaxExec), 8); EndLine;
-    Texts.WriteString(W, "  Eval/Exec     "); Texts.WriteInt(W, (Procs.Eval * 1000) DIV Procs.Exec, 8);
-    Texts.WriteInt(W, (Procs.MaxEval * 1000) DIV Procs.MaxExec, 8); EndLine
+    Texts.WriteString(W, "  GC limit      "); Texts.WriteInt(W, GC.GClimit, 8); EndLine
   END Watch;
 
   PROCEDURE ShowModules*;
@@ -305,48 +285,27 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
     Texts.WriteLn(W);
     total := 0;
     WHILE M # NIL DO
-        Texts.WriteString(W, "  ");
-        IF M.name[0] = 0X THEN
-          Texts.WriteString(W, "---"); Pad(3, 20);
-        ELSE
-          Texts.WriteString(W, M.name); Pad(Length(M.name), 20);
-        END;
-        Texts.WriteHex(W, SYSTEM.VAL(INTEGER, M));  (* base address of module *)
-        Texts.WriteHex(W, M.code);                  (* start address of code segment *)
-        Texts.WriteHex(W, M.imp);                   (* end address of code segment *)
-        Texts.WriteInt(W, M.code - M.data, 6);      (* size of data segment *)
-        Texts.WriteInt(W, M.imp - M.code, 6);       (* size of code segment *)
-        INC(total, M.size);
-        Texts.WriteInt(W, M.size, 6);               (* total size of module slot, can be larger than module size*)
-        Texts.WriteInt(W, M.refcnt, 6);
-        Texts.WriteInt(W, M.num, 6);
-      (*
+      Texts.WriteString(W, "  ");
+      IF M.name[0] = 0X THEN
+        Texts.WriteString(W, "---"); Pad(3, 20);
       ELSE
-        Texts.WriteString(W, "  ---")
-      END ;
-      *)
+        Texts.WriteString(W, M.name); Pad(Length(M.name), 20);
+      END;
+      Texts.WriteHex(W, SYSTEM.VAL(INTEGER, M));  (* base address of module *)
+      Texts.WriteHex(W, M.code);                  (* start address of code segment *)
+      Texts.WriteHex(W, M.imp);                   (* end address of code segment *)
+      Texts.WriteInt(W, M.code - M.data, 6);      (* size of data segment *)
+      Texts.WriteInt(W, M.imp - M.code, 6);       (* size of code segment *)
+      INC(total, M.size);
+      Texts.WriteInt(W, M.size, 6);               (* total size of module slot, can be larger than module size*)
+      Texts.WriteInt(W, M.refcnt, 6);
+      Texts.WriteInt(W, M.num, 6);
       Texts.WriteLn(W); (*m := ORD(M);*) M := M.next
     END;
     Pad(0, 44); Texts.WriteString(W, "total");
     Texts.WriteInt(W, total, 18); Texts.WriteLn(W)
   END ShowModules;
-(*
-  PROCEDURE ShowModules*;
-    VAR T: Texts.Text;
-    M: Modules.Module;
-  BEGIN
-    Texts.WriteString(W, "System.ShowModules"); EndLine;
-    M := Modules.root;
-    WHILE M # NIL DO
-      IF M.name[0] # 0X THEN
-        Texts.WriteString(W, M.name); Pad(Length(M.name), 20); Texts.WriteHex(W, ORD(M));
-        Texts.WriteHex(W, M.code); Texts.WriteInt(W, M.refcnt, 4)
-      ELSE Texts.WriteString(W, "---")
-      END ;
-      Texts.WriteLn(W); M := M.next
-    END
-  END ShowModules
-*)
+
   PROCEDURE ShowCommands*;
     VAR M: Modules.Module;
       comadr: INTEGER; ch: CHAR;
@@ -369,53 +328,60 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
     END
   END ShowCommands;
 
-
   PROCEDURE ShowProcesses*;
-    VAR j: INTEGER; p0: Procs.Process; pd: Procs.ProcessData; td: ARRAY Procs.NumTimers OF INTEGER;
+    VAR j, pid: INTEGER; pd: Procs.ProcessData; td: ARRAY Procs.NumTimers OF INTEGER;
   BEGIN
     Texts.WriteString(W, "System.ShowProcesses"); Texts.WriteLn(W);
-    NEW(pd);
-    Texts.WriteString(W, "  id "); Texts.WriteString(W, "  ty"); Texts.WriteString(W, "  pr");
-    Texts.WriteString(W, "  tm"); Texts.WriteString(W, "   n"); Texts.WriteString(W, "  st");
-    Texts.WriteString(W, "    rt"); Texts.WriteString(W, "     rtm"); Texts.WriteString(W, "  ov");
-    Texts.WriteString(W, "  cn");
-    Texts.WriteString(W, "    stk adr"); Texts.WriteString(W, "    size"); Texts.WriteString(W, "     hot");
-    Texts.WriteString(W, "    used"); Texts.WriteString(W, "  unused");
+    Texts.WriteString(W, "  nm");
+    Texts.WriteString(W, "  pid");
+    Texts.WriteString(W, "  pr");
+    Texts.WriteString(W, "  tr");
+    Texts.WriteString(W, "  tm");
+    Texts.WriteString(W, "    stk adr");
+    Texts.WriteString(W, "    size");
+    Texts.WriteString(W, "   hot");
+    Texts.WriteString(W, "  used");
+    Texts.WriteString(W, "  unused");
     Texts.WriteLn(W);
-    p0 := NIL;
-    Procs.GetProcData(p0, pd);
-    WHILE p0 # NIL DO
+    pid := 0;
+    Procs.GetProcData(pd, pid);
+    WHILE pid # 0 DO
       Texts.WriteString(W, "  ");
-      Texts.WriteString(W, pd.id);
-      j := 0; WHILE pd.id[j] # 0X DO INC(j) END;
-      WHILE j < Procs.IdLen-1 DO Texts.WriteString(W, " "); INC(j) END;
-      Texts.WriteInt(W, pd.ptype, 4);
-      Texts.WriteInt(W, pd.prio, 4); Texts.WriteInt(W, pd.period, 4);
-      Texts.WriteInt(W, pd.pn, 4);
-      Texts.WriteInt(W, pd.state, 4);
-      Texts.WriteInt(W, microSeconds(pd.runTime), 6);
-      Texts.WriteInt(W, microSeconds(pd.maxRunTime), 8);
-      Texts.WriteInt(W, pd.ovflCnt, 4); Texts.WriteInt(W, pd.cn, 4);
-      Texts.WriteString(W, "  "); Texts.WriteHex(W, pd.stackAdr); (* stack address *)
-      Texts.WriteInt(W, pd.stackSize, 8); (* stack size *)
-      Texts.WriteInt(W, pd.stackHotSize, 8); (* stack hot size *)
-      Texts.WriteInt(W, pd.stackAdr + pd.stackSize - pd.stackMax, 8); (* stack used *)
-      Texts.WriteInt(W, pd.stackMax - pd.stackAdr, 8); (* stack unused *)
+      Texts.WriteString(W, pd.name);
+      j := 0; WHILE pd.name[j] # 0X DO INC(j) END;
+      WHILE j < Procs.NameLen-1 DO Texts.WriteString(W, " "); INC(j) END;
+      Texts.WriteInt(W, pd.pid, 4);
+      Texts.WriteInt(W, pd.prio, 4);
+      Texts.WriteInt(W, pd.trigger, 4);
+      IF pd.trigger > 0 THEN
+        Texts.WriteInt(W, pd.period, 4)
+      ELSE
+        Texts.WriteString(W, "  --")
+      END;
+      Texts.WriteString(W, "  "); Texts.WriteHex(W, pd.stAdr); (* stack address *)
+      Texts.WriteInt(W, pd.stSize, 8); (* stack size *)
+      Texts.WriteInt(W, pd.stHotSize, 6); (* stack hot size *)
+      Texts.WriteInt(W, pd.stAdr + pd.stSize - pd.stMin, 6); (* stack used *)
+      Texts.WriteInt(W, pd.stMin - pd.stAdr, 8); (* stack unused *)
       Texts.WriteLn(W);
-      Procs.GetProcData(p0, pd)
+      Procs.GetProcData(pd, pid)
     END;
-    Procs.GetSchedulerData(pd);
-    Texts.WriteString(W, "  scheduler                              ");
-    Texts.WriteInt(W, pd.cn, 6); Texts.WriteString(W, "  ");
-    Texts.WriteHex(W, pd.stackAdr); Texts.WriteInt(W, pd.stackSize, 8); Texts.WriteInt(W, pd.stackHotSize, 8);
-    Texts.WriteInt(W, pd.stackAdr + pd.stackSize - pd.stackMax, 8);
-    Texts.WriteInt(W, pd.stackMax - pd.stackAdr, 8);
+
+    Procs.GetLoopData(pd);
+    Texts.WriteString(W, "  scanner              ");
+    Texts.WriteHex(W, pd.stAdr);
+    Texts.WriteInt(W, pd.stSize, 8);
+    Texts.WriteInt(W, pd.stHotSize, 6);
+    Texts.WriteInt(W, pd.stAdr + pd.stSize - pd.stMin, 6);
+    Texts.WriteInt(W, pd.stMin - pd.stAdr, 8);
     Texts.WriteLn(W); Texts.WriteLn(W);
+
     Procs.GetTimerData(td);
     Texts.WriteString(W, "  timers: ");
     FOR j := 0 TO Procs.NumTimers - 1 DO
       Texts.Write(W, "t"); Texts.WriteInt(W, j, 0); Texts.WriteString(W, ": "); Texts.WriteInt(W, td[j], 0); Texts.WriteString(W, "  ")
     END;
+
     Texts.WriteLn(W)
   END ShowProcesses;
 
