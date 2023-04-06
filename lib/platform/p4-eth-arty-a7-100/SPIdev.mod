@@ -43,7 +43,7 @@ MODULE SPIdev;
 
     (* CONFIG data *)
     Dev0DataAdr = DevAdr.SPIdev0DataAdr;
-    Dev0StatusAdr = DevAdr.SPIdev0StatusAdr;
+    Dev0StatusAdr = Dev0DataAdr + 4;
 
     (*
     Dev1DataAdr = DevAdr.SPIdev1DataAdr;
