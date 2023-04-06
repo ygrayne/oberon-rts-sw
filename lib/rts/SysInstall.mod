@@ -1,11 +1,11 @@
 MODULE SysInstall;
 
-  IMPORT Processes, Cmds, GC, Errors;
+  IMPORT Cmds, GC, Errors, Audit;
 
   PROCEDURE Install*;
   BEGIN
     GC.Install;
-    Processes.InstallAudit;
+    Audit.Install;
     Cmds.Install;
     Errors.Install
   END Install;
@@ -14,7 +14,7 @@ MODULE SysInstall;
   PROCEDURE Recover*;
   BEGIN
     GC.Recover;
-    Processes.RecoverAudit;
+    Audit.Recover;
     Cmds.Recover;
     Errors.Recover
   END Recover;
