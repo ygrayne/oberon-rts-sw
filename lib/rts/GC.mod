@@ -73,6 +73,7 @@ MODULE GC;
     gcCount := 1;
     NEW(gc);
     Procs.New(gc, gcc, gcstack, GCstackHot, GCprio, gcPid, res);
+    Procs.Enable(gc);
     ASSERT(res = Procs.OK)
   END Install;
 

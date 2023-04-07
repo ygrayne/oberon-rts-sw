@@ -176,6 +176,7 @@ MODULE Cmds;
       stackAdr := Kernel.stackOrg - Kernel.stackSize;
       stackSize := Procs.LoopStackBottom - stackAdr;
       Procs.Init(p, cmdc, stackAdr, stackSize, StackHotSize, Prio, pid, res);
+      Procs.Enable(p);
       Installed := res = Procs.OK
     END
   END Install;

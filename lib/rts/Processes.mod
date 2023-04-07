@@ -2,7 +2,10 @@
   Process Handling
   Based on coroutines
   --
-  NEW
+  * Process creation and installation for scheduling
+  * Process scheduling procedures, eg. delays, suspension, yield control
+  * Process reset, recover, kill, ...
+  * Cooperative scheduling
   --
   (c) 2020-2023 Gray gray@grayraven.org
   https://oberon-rts.org/licences
@@ -10,7 +13,7 @@
 
 MODULE Processes;
 
-  IMPORT SYSTEM, Kernel, Coroutines, ProcTimers := ProcTimersFixed, Watchdog, SysCtrl;
+  IMPORT SYSTEM, Kernel, Coroutines, ProcTimers := ProcTimersFixed, Watchdog, SysCtrl, DebugOut;
 
   CONST
     MaxNumProcs* = 32;
@@ -56,16 +59,17 @@ MODULE Processes;
     loop: Coroutines.Coroutine;
     LoopStackTop*, LoopStackBottom*: INTEGER;
 
-  (* process creation and queue mgmt *)
+
+  (* manage the ready queue *)
 
   PROCEDURE slotIn(p: Process);
     VAR p0, p1: Process;
   BEGIN
-    p0 := cp; p1 := p0;
-    WHILE (p0 # NIL) & (p0 # p) & (p0.prio <= p.prio) DO
-      p1 := p0; p0 := p0.next
-    END;
-    IF p # p0 THEN (* if p was not already queued *)
+    IF ~(p.pid IN queued) THEN
+      p0 := cp; p1 := p0;
+      WHILE (p0 # NIL) & (p0.prio <= p.prio) DO
+        p1 := p0; p0 := p0.next
+      END;
       IF p1 = p0 THEN cp := p ELSE  p1.next := p END;
       p.next := p0
     ELSE
@@ -73,6 +77,17 @@ MODULE Processes;
     END
   END slotIn;
 
+  PROCEDURE slotOut(p: Process);
+    VAR p0, p1: Process;
+  BEGIN
+    IF p.pid IN queued THEN
+      p0 := cp; p1 := p0;
+      WHILE (p0 # NIL) & (p0 # p) DO p1 := p0; p0 := p0.next END;
+      IF p0 = p1 THEN cp := p.next ELSE p1.next := p.next END
+    END
+  END slotOut;
+
+  (* process creation and queue mgmt *)
 
   PROCEDURE Init*(p: Process; proc: PROC; stAdr, stSize, stHotSize, prio: INTEGER; VAR pid, res: INTEGER);
     VAR i: INTEGER;
@@ -93,7 +108,6 @@ MODULE Processes;
       NEW(p.cor); ASSERT(p.cor # NIL);
       Coroutines.Init(p.cor, p.proc, stAdr, stSize, stHotSize, p.pid);
       ProcTimers.Disable(p.pid);
-      slotIn(p);
       res := OK
     ELSE
       res := Failed
@@ -105,54 +119,54 @@ MODULE Processes;
     Init(p, proc, SYSTEM.ADR(stack), LEN(stack), stHotSize, prio, pid, res)
   END New;
 
-  PROCEDURE Start*(p: Process);
+  PROCEDURE Enable*(p: Process);
   BEGIN
-    slotIn(p)
-  END Start;
+    slotIn(p);
+    INCL(queued, p.pid)
+  END Enable;
 
-  PROCEDURE Stop*(p: Process);
+  PROCEDURE Disable*(p: Process);
   BEGIN
-    IF p.pid IN queued THEN
-      (*slotOut(p)*);
-      EXCL(queued, p.pid)
-    END
-  END Stop;
+    slotOut(p);
+    EXCL(queued, p.pid)
+  END Disable;
 
   (* in-process api *)
 
   PROCEDURE Next*;
-    VAR me: Process;
   BEGIN
-    me := cp;
-    cp := cp.next;
-    IF me.trigger = TrigNone THEN
-      slotIn(me)
+    IF Cp.trigger = TrigNone THEN
+      slotIn(Cp);
+      INCL(queued, Cp.pid)
     ELSE
-      EXCL(queued, me.pid);
+      slotOut(Cp);
+      EXCL(queued, Cp.pid)
     END;
-    Coroutines.Transfer(me.cor, loop)
+    Coroutines.Transfer(Cp.cor, loop)
   END Next;
 
 
   PROCEDURE SetPeriod*(period: INTEGER);
   BEGIN
-    cp.period := period;
-    cp.trigger := TrigSome;
-    ProcTimers.SetPeriod(cp.pid, period) (* also enables timer *)
+    Cp.period := period;
+    Cp.trigger := TrigSome;
+    ProcTimers.SetPeriod(Cp.pid, period) (* also enables timer *)
   END SetPeriod;
 
 
   PROCEDURE SetName*(name: ARRAY OF CHAR);
   BEGIN
-    cp.name := name
+    Cp.name := name
   END SetName;
 
 
   PROCEDURE SetNoWatchdog*;
   BEGIN
-    cp.watchdog := FALSE
+    Cp.watchdog := FALSE
   END SetNoWatchdog;
 
+
+  (* manage processes *)
 
   PROCEDURE GetName*(pid: INTEGER; VAR name: ProcName);
   BEGIN
@@ -160,6 +174,19 @@ MODULE Processes;
   END GetName;
 
   (* loop/scanner coroutine code *)
+  (* scan for hw signals to schedule processes *)
+(*
+  PROCEDURE printQ;
+    VAR p0: Process;
+  BEGIN
+    p0 := cp;
+    WHILE p0 # NIL DO
+      DebugOut.WriteLine("q ", p0.name, "", -1);
+      p0 := p0.next
+    END;
+    DebugOut.WriteLine("---", "", "", -1)
+  END printQ;
+*)
 
   PROCEDURE loopc;
     VAR pid: INTEGER; readyT: SET;
@@ -173,10 +200,12 @@ MODULE Processes;
         pid := 0;
         WHILE pid < MaxNumProcs DO
           IF pid IN readyT THEN
+            (*printQ;*)
             ASSERT(procs[pid].trigger = TrigSome);
             slotIn(procs[pid]);
             INCL(queued, pid);
-            ProcTimers.ClearReady(pid)
+            ProcTimers.ClearReady(pid);
+            (*printQ*)
           END;
           INC(pid)
         END

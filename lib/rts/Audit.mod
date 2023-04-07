@@ -55,6 +55,7 @@ MODULE Audit;
   BEGIN
     NEW(audit);
     Procs.New(audit, auditc, auditStack, AuditStackHotSize, AuditPrio, auditPid, res);
+    Procs.Enable(audit);
     ASSERT(res = Procs.OK)
   END Install;
 
