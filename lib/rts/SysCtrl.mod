@@ -1,13 +1,18 @@
 (**
   Interface to the System Control and Status Register
   --
+  [0]: bootloader will skip loading from disk
+  [1]: trigger system reset
+  [7:3] : unused
+  [8:13]: current process id
+  --
   2020 - 2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences
 **)
 
 MODULE SysCtrl;
 
-  IMPORT SYSTEM, DevAdr, DebugOut;
+  IMPORT SYSTEM, DevAdr;
 
   CONST
     SysCtrlRegAdr = DevAdr.SysCtrlRegAdr;  (* SCR *)
@@ -22,13 +27,6 @@ MODULE SysCtrl;
     KillAbort* = 1;
     StackOverflowAbort* = 2;
     NotAliveAbort* = 3;
-
-    (* restart causes *)
-    RestartFPGA* = 0;
-    RestartRstBtn* = 1;
-    RestartSW* = 2;
-    RestartSWother* = 4;
-    RestartStackOvfl* = 8;
 
 
   (* raw register ops *)
@@ -55,37 +53,50 @@ MODULE SysCtrl;
     VAR x: INTEGER;
   BEGIN
     SYSTEM.GET(SysCtrlRegAdr, x);
-    SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) + {SysNoReload}));
-    SYSTEM.GET(SysCtrlRegAdr, x);
-    DebugOut.WriteLine("no reload", "", "", x)
+    SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) + {SysNoReload}))
   END SetNoReload;
 
   PROCEDURE SetReload*;
     VAR x: INTEGER;
   BEGIN
     SYSTEM.GET(SysCtrlRegAdr, x);
-    SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) - {SysNoReload}));
-    SYSTEM.GET(SysCtrlRegAdr, x);
-    DebugOut.WriteLine("reload", "", "", x)
+    SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) - {SysNoReload}))
   END SetReload;
 
 
   (* error handling *)
   PROCEDURE SetError*(abortNo, trapNo, addr: INTEGER);
-    VAR x: INTEGER;
   BEGIN
     SYSTEM.PUT(SysCtrlErrAdr, LSL(addr, 8) + LSL(abortNo, 4) + trapNo);
-    SYSTEM.GET(SysCtrlErrAdr, x);
-    DebugOut.WriteLine("reload", "", "", x)
   END SetError;
 
   PROCEDURE GetError*(VAR errorNo, addr: INTEGER);
     VAR x: INTEGER;
   BEGIN
     SYSTEM.GET(SysCtrlErrAdr, x);
+    errorNo := BFX(x, 7, 0);
+    addr := BFX(x, 31, 8);
+    (*
     errorNo := x MOD 0100H;
     addr := LSR(x, 8)
+    *)
   END GetError;
+
+
+  PROCEDURE SetCpPid*(pid: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(SysCtrlRegAdr, x);
+    BFI(x, 12, 8, pid);
+    SYSTEM.PUT(SysCtrlRegAdr, x)
+  END SetCpPid;
+
+  PROCEDURE GetCpPid*(VAR pid: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(SysCtrlRegAdr, x);
+    pid := BFX(x, 12, 8)
+  END GetCpPid;
 
 END SysCtrl.
 

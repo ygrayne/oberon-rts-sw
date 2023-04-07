@@ -70,7 +70,7 @@ MODULE Oberon;
     stackPtr := SYSTEM.REG(SP);
     StackMonitor.GetMin(x); (* lowest stack pointer value during startup *)
     le.more0 := Kernel.stackOrg - x; (* startup stack used *)
-    le.more1 := Kernel.stackOrg - stackPtr; (* stack pointer before loading cmds *)
+    le.more1 := Kernel.stackOrg - stackPtr; (* stack pointer before loading system processes *)
     le.more2 := Kernel.allocated;  (* startup heap used *)
     Log.Put(le)
   END logMemData;
@@ -79,6 +79,7 @@ BEGIN
   (* entry point for the outer core, loaded by Modules *)
   (* the temp trap handler is still installed *)
   (* no abort interrupts and abort handler are installed *)
+  (* running with SP down from stackOrg *)
   LED(0F1H);
   Par := Cmds.Par; Call := Cmds.Call; (* EPO command handling compatibility *)
   (***
@@ -91,10 +92,8 @@ BEGIN
   SysInstall.Install;
   LED(0F4H);
 
-  (* from here, cmds will use most of the original stack, the scheduler (Loop) only keeps a small part
-  at the top, see Procs.SchedulerStackSize *)
-
-  (*Calltrace.Select(0);*)
+  (* from here, cmds will use most of the original stack, the scanner (loop) only keeps a small part
+  at the top, see Procs.LoopStackSize *)
 
   GC.Collect; (* make sure we have all heap space available for startup loading by Cmds *)
   LED(0F5H);

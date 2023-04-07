@@ -16,21 +16,21 @@ MODULE Coroutines;
     CoroutineDesc* = RECORD
       sp: INTEGER; (* stored stack pointer when transferring *)
       id*: INTEGER; (* coroutine id *)
-      stackAdr*, stackSize*, stackHotLimit*, stackMax*: INTEGER (* only exported for reporting/debugging reasons *)
+      stAdr*, stSize*, stHotLimit*, stMin*: INTEGER (* only exported for reporting/debugging reasons *)
     END;
 
 
-  PROCEDURE Init*(cor: Coroutine; code: PROCEDURE; stackAdr, stackSize, stackHotSize: INTEGER; id: INTEGER);
+  PROCEDURE Init*(cor: Coroutine; code: PROCEDURE; stAdr, stSize, stHotSize: INTEGER; id: INTEGER);
   BEGIN
     (* set the params for the stack monitor, see Transfer *)
-    cor.stackAdr := stackAdr;
-    cor.stackHotLimit := stackAdr + stackHotSize;
-    cor.stackSize := stackSize;
-    cor.stackMax := stackAdr + stackSize;
+    cor.stAdr := stAdr;
+    cor.stHotLimit := stAdr + stHotSize;
+    cor.stSize := stSize;
+    cor.stMin := stAdr + stSize;
     cor.id := id;
 
     (* set up the stack for the initial transfer *)
-    cor.sp := stackAdr + stackSize;
+    cor.sp := stAdr + stSize;
     (* place 'cor' for the initial transfer to this coroutine, at SP + 4 with SP pointing to LNK, seet below *)
     DEC(cor.sp, 8);
     SYSTEM.PUT(cor.sp, SYSTEM.VAL(INTEGER, cor));
@@ -53,7 +53,7 @@ MODULE Coroutines;
     (* prologue: push caller's LNK and parameters 'f' and 't' onto f's stack *)
 
     (* disarm stack monitor, get coroutine number *)
-    StackMonitor.Disarm(f.id, f.stackAdr, f.stackHotLimit, f.stackMax);
+    StackMonitor.Disarm(f.id, f.stAdr, f.stHotLimit, f.stMin);
 
     (* stack switching *)
     (* save f's SP *)
@@ -70,11 +70,10 @@ MODULE Coroutines;
     (***
     Calltrace.Select(f.id);
     *)
-    StackMonitor.Arm(f.id, f.stackAdr, f.stackHotLimit, f.stackMax)
+    StackMonitor.Arm(f.id, f.stAdr, f.stHotLimit, f.stMin)
 
     (* epilogue: retrieve LNK from stack, adjust stack by +12 *)
     (* branch to LNK, ie. continue "as" t *)
   END Transfer;
 
 END Coroutines.
-

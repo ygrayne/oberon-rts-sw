@@ -1,5 +1,5 @@
 (**
-  Garbage collector
+  Garbage collector process
   --
   Base/origin: (Embedded) Project Oberon, module Oberon
   --
@@ -13,9 +13,9 @@ MODULE GC;
 
   CONST
     GCperiod = 7;
-    GCid = "gc";
+    GCname = "gc";
     GCprio = 0;
-    GCptype = Procs.SystemProc;
+    (*GCptype = Procs.SystemProc;*)
     GCstackSize = 512;
     GCstackHot = 0;
     GClimitDiv = 4; (* kick in when only 1/4 of heap space is left *)
@@ -24,13 +24,14 @@ MODULE GC;
     gc: Procs.Process;
     gcstack: ARRAY GCstackSize OF BYTE;
     gcCount, heapSize, GClimit*: INTEGER;
+    gcPid: INTEGER;
 
 
   PROCEDURE collect;
     VAR mod: Modules.Module; alloc, time: INTEGER; le: Log.Entry;
   BEGIN
     alloc := Kernel.allocated;
-    time := Procs.Time();
+    time := Kernel.Time();
     mod := Modules.root; LED(21H);
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END;
@@ -47,6 +48,7 @@ MODULE GC;
   PROCEDURE gcc;
   BEGIN
     Procs.SetPeriod(GCperiod);
+    Procs.SetName(GCname);
     REPEAT
       Procs.Next;
       IF (gcCount = 0) OR (Kernel.allocated >= GClimit) THEN
@@ -70,8 +72,9 @@ MODULE GC;
     GClimit := heapSize - (heapSize DIV GClimitDiv);
     gcCount := 1;
     NEW(gc);
-    Procs.Init(gc, gcc, gcstack, GCstackHot, GCptype, GCprio, GCid);
-    Procs.Install(gc, res)
+    Procs.New(gc, gcc, gcstack, GCstackHot, GCprio, gcPid, res);
+    Procs.Enable(gc);
+    ASSERT(res = Procs.OK)
   END Install;
 
   PROCEDURE Recover*;

@@ -34,7 +34,7 @@ MODULE RS232dev;
 
     (*** CONFIG *)
     Dev0DataAdr = DevAdr.RS232dev0DataAdr;
-    Dev0StatusAdr = DevAdr.RS232dev0StatusAdr;
+    Dev0StatusAdr = Dev0DataAdr + 4;
 
     (*
     Dev1DataAdr = DevAdr.RS232dev1DataAdr;

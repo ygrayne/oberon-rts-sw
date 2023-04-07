@@ -4,9 +4,8 @@
   --
   * Process creation and installation for scheduling
   * Process scheduling procedures, eg. delays, suspension, yield control
-  * Process reset, recover, kill, finalise
-  * Cooperative scheduler (Loop)
-  * Audit process
+  * Process reset, recover, kill, ...
+  * Cooperative scheduling
   --
   (c) 2020-2023 Gray gray@grayraven.org
   https://oberon-rts.org/licences
@@ -14,548 +13,260 @@
 
 MODULE Processes;
 
-  IMPORT
-    SYSTEM, Kernel, Coroutines, ProcTimers := ProcTimersFixed, SysCtrl, Log, Watchdog;
+  IMPORT SYSTEM, Kernel, Coroutines, ProcTimers := ProcTimersFixed, Watchdog, SysCtrl, DebugOut;
 
   CONST
-    (* process states *)
-    StateOff = 0; (* not installed *)
-    StateReady* = 2; (* marked ready to run by scheduler *)
-    StateRunning* = 3; (* current process *)
-    StateActive* = 4; (* Install, Enable => unconditionally ready-d during next scheduler evaluation => State Ready *)
-    StateAwaiting* = 5; (* Wait => awaiting activation using Enable by other process, or timeout => StateActive *)
-    StateTimed* = 6; (* Next => awaiting activation by periodic timer, or timeout => StateReady *)
-    StateDelayed* = 7; (* DelayMe => awaiting activation by delay timer => StateReady *)
-    StateAwaitingDevSig* = 8; (* AwaitDevSignal => awaiting activation by dev signal, or timeout => StateReady *)
-    StateReset = 9; (* ResetMe => will be reset by scheduler after yielding => StateActive *)
-    MaxState = StateReset;
-
-    (* process types *)
-    SystemProc* = 0; EssentialProc* = 1; OtherProc* = 2;
-    ProcTypes = {SystemProc .. OtherProc};
-
-    (* OK/error codes *)
-    OK* = 0; Error* = -1;
-
-    (* process return values *)
-    (* the return value is the process state from which the process was set ready to run *)
-    (* unless there was a timeout *)
-    Timeout* = -1;
-
-    (* config *)
-    (* note: there are 32 process controllers instantiated in HW *)
-    IdLen* = 4;
-    MaxNumProcs* = 31;
-    FirstProcNum = 1; (* 0 is reserved for the scheduler *)
-
-    SchedulerStackSize = 512;
-    SchedulerStackHotSize = 0;
-    ClockFreqAdr = -200;
-
-    (* process timers *)
+    MaxNumProcs* = 32;
+    FirstProcNum = 1; (* 0 is reserved for the loop *)
+    NameLen* = 4;
     NumTimers* = 8;
-    P0 = 5; P1 = 10; P2 = 20; P3 = 50; P4 = 100; P5 = 200; P6 = 500; P7 = 1000; (* timer periods, in ms *)
-    NotTimed = -1; (* with fixed timers, else use 0 *)
-
-    (* audit process config *)
-    AuditPeriod = 7;
-    AuditPrio = 0;
-    AuditPrId = "adt";
-    AuditStackHotSize = 0;
-    AuditCount = 5; (* times AuditPeriod *)
-
-    (* not-alive interrupt, software-triggered *)
-    NotAliveIntNum = 3;
-
-    SP = 14;
+    OK* = 0;
+    Failed* = 1;
+    LoopStackSize = 256;
+    LoopStackHotSize = 32;
+    LoopId = 0;
+    TrigNone = 0;
+    TrigSome = 1;
+    P0 = 5; P1 = 10; P2 = 20; P3 = 50; P4 = 100; P5 = 200; P6 = 500; P7 = 1000;
 
   TYPE
+    PROC* = PROCEDURE;
+    ProcName* = ARRAY NameLen OF CHAR;
     Process* = POINTER TO ProcessDesc;
-    ProcCode* = PROCEDURE;
-    Handler* = PROCEDURE(p: Process);
-    ProcId* = ARRAY IdLen OF CHAR;
     ProcessDesc* = RECORD
-      state, period, ptype, prio: INTEGER;
-      id: ProcId;
-      watchdogOff: BOOLEAN;
-      pn, retVal, maxRunTime, runTime, ovflCnt: INTEGER;
-      code: ProcCode;
+      proc: PROC;
+      prio, pid: INTEGER;
+      period: INTEGER;
+      trigger: INTEGER;
+      watchdog: BOOLEAN;
+      name: ProcName;
       cor: Coroutines.Coroutine;
-      stackAdr, stackSize, stackHotSize: INTEGER;
-      finalise: Handler;
-      next, parent, link*: Process
+      next: Process
     END;
-    ProcessData* = POINTER TO ProcessDataDesc;
-    ProcessDataDesc* = RECORD
-      ptype*, prio*, period*, pn*, state*, cn*: INTEGER;
-      id*: ProcId;
-      stackAdr*, stackSize*, stackMax*, stackHotSize*: INTEGER;
-      maxRunTime*, runTime*, ovflCnt*: INTEGER
+    ProcessData* = RECORD
+      pid*, prio*: INTEGER;
+      name*: ARRAY NameLen OF CHAR;
+      stAdr*, stSize*, stHotSize*, stMin*: INTEGER;
+      trigger*: INTEGER;
+      period*: INTEGER
     END;
 
   VAR
-    procs: Process; (* all installed procs, NIL-terminated list *)
-    Cp*: Process;  (* current process *)
-    loop: Coroutines.Coroutine; (* scheduler *)
+    procs: ARRAY MaxNumProcs OF Process;
     NumProcs*: INTEGER;
-    installedP, activeP: SET;
-    SchedulerStackTop*, SchedulerStackBottom*: INTEGER;
-    audit: Process;
-    auditStack: ARRAY 256 OF BYTE;
-    auditCnt: INTEGER;
-    le: Log.Entry;
-    Eval*, Exec*, MaxEval*, MaxExec*: INTEGER; (* clock cycles *)
-    ClockFreq*, ClockPeriod*: INTEGER; (* Hz, nanoseconds *)
+    Cp*, cp: Process;
+    queued: SET;
+    loop: Coroutines.Coroutine;
+    LoopStackTop*, LoopStackBottom*: INTEGER;
 
 
-  PROCEDURE InitRaw*(p: Process; code: ProcCode; stackAdr, stackSize, stackHotSize, ptype, prio: INTEGER; id: ARRAY OF CHAR);
-  BEGIN
-    ASSERT(ptype IN ProcTypes); ASSERT(LEN(id) <= IdLen);
-    p.code := code; p.stackAdr := stackAdr; p.stackSize := stackSize; p.stackHotSize := stackHotSize;
-    NEW(p.cor); ASSERT(p.cor # NIL);
-    p.period := NotTimed; p.ptype := ptype; p.id := id; p.prio := prio; p.maxRunTime := 0; p.runTime := 0;
-    p.watchdogOff := FALSE;
-    p.finalise := NIL; p.parent := NIL;
-    p.state := StateOff
-  END InitRaw;
-
-
-  PROCEDURE Init*(p: Process; code: ProcCode; stack: ARRAY OF BYTE; stackHotSize, ptype, prio: INTEGER; id: ARRAY OF CHAR);
-  BEGIN
-    ASSERT(ptype IN ProcTypes); ASSERT(LEN(id) <= IdLen);
-    InitRaw(p, code, SYSTEM.ADR(stack), LEN(stack), stackHotSize, ptype, prio, id)
-  END Init;
-
+  (* manage the ready queue *)
 
   PROCEDURE slotIn(p: Process);
     VAR p0, p1: Process;
   BEGIN
-    p0 := procs; p1 := p0;
-    WHILE (p0 # NIL) & (p0.prio < p.prio) DO
-      p1 := p0; p0 := p0.next
-    END;
-    IF p1 = p0 THEN procs := p ELSE p1.next := p END;
-    p.next := p0
-  END slotIn;
-
-
-  PROCEDURE Install*(p: Process; VAR res: INTEGER);
-    VAR i: INTEGER;
-  BEGIN
-    res := Error;
-    IF p.state = StateOff THEN
-      IF NumProcs < MaxNumProcs THEN
-        slotIn(p);
-        INC(NumProcs);
-        i := FirstProcNum; WHILE i IN installedP DO INC(i) END; (* one must be available due to IF NumProcs < MaxNumProcs *)
-        p.pn := i;
-        INCL(installedP, i);
-        p.state := StateActive; INCL(activeP, i);
-        Coroutines.Init(p.cor, p.code, p.stackAdr, p.stackSize, p.stackHotSize, p.pn);
-        res := OK;
-        le.event := Log.Process; le.cause := Log.ProcInstall; le.procId := p.id; le.more0 := p.pn;
-        Log.Put(le)
-      ELSE
-        le.event := Log.System; le.cause := Log.SysProcsFull; le.procId := p.id;
-        Log.Put(le)
-      END
+    IF ~(p.pid IN queued) THEN
+      p0 := cp; p1 := p0;
+      WHILE (p0 # NIL) & (p0.prio <= p.prio) DO
+        p1 := p0; p0 := p0.next
+      END;
+      IF p1 = p0 THEN cp := p ELSE  p1.next := p END;
+      p.next := p0
+    ELSE
+      (* overflow *)
     END
-  END Install;
-
-
-  PROCEDURE ResetMax*;
-  BEGIN
-    (*
-    ProcMonitor.ResetProcMax
-    *)
-  END ResetMax;
-
-
-  PROCEDURE SetParent*(p, parent: Process);
-  BEGIN
-    p.parent := parent
-  END SetParent;
-
+  END slotIn;
 
   PROCEDURE slotOut(p: Process);
     VAR p0, p1: Process;
   BEGIN
-    p0 := procs; p1 := p0;
-    WHILE (p0 # NIL) & (p0 # p) DO p1 := p0; p0 := p0.next END;
-    IF p0 = p1 THEN procs := p.next ELSE p1.next := p.next END
+    IF p.pid IN queued THEN
+      p0 := cp; p1 := p0;
+      WHILE (p0 # NIL) & (p0 # p) DO p1 := p0; p0 := p0.next END;
+      IF p0 = p1 THEN cp := p.next ELSE p1.next := p.next END
+    END
   END slotOut;
 
+  (* process creation and queue mgmt *)
 
-  PROCEDURE Remove*(p: Process);
+  PROCEDURE Init*(p: Process; proc: PROC; stAdr, stSize, stHotSize, prio: INTEGER; VAR pid, res: INTEGER);
+    VAR i: INTEGER;
   BEGIN
-    IF (p.state # StateOff) & (p.pn IN installedP) THEN
-      slotOut(p);
-      p.state := StateOff;
-      DEC(NumProcs);
-      EXCL(installedP, p.pn); EXCL(activeP, p.pn);
-      ProcTimers.Disable(p.pn);
-      (***
-      ProcDevsig.Disable(p.pn);
-      ProcDelay.Disable(p.pn);
-      *)
-      IF p.finalise # NIL THEN p.finalise(p) END;
-      le.event := Log.Process; le.cause := Log.ProcRemove; le.procId := p.id; le.more0 := p.pn;
-      Log.Put(le)
-    END
-  END Remove;
-
-
-  PROCEDURE RemoveMe*;
-  BEGIN
-    Remove(Cp);
-    Coroutines.Transfer(Cp.cor, loop)
-  END RemoveMe;
-
-
-  PROCEDURE Reset*(p: Process);
-  BEGIN
-    IF p.parent = NIL THEN
-      ProcTimers.Disable(p.pn);
-      (***
-      ProcDelay.Disable(p.pn);
-      ProcDevsig.Disable(p.pn);
-      **)
-      p.state := StateActive; INCL(activeP, p.pn);
-      le.event := Log.Process; le.cause := Log.ProcReset; le.procId := p.id; le.more0 := p.pn;
-      Log.Put(le);
-      Coroutines.Init(p.cor, p.code, p.stackAdr, p.stackSize, p.stackHotSize, p.pn)
+    ASSERT(p # NIL);
+    p.proc := proc;
+    p.prio := prio;
+    p.period := 0;
+    p.trigger := TrigNone;
+    p.watchdog := TRUE;
+    p.name := "";
+    IF NumProcs < MaxNumProcs THEN
+      INC(NumProcs);
+      i := FirstProcNum;
+      WHILE procs[i] # NIL DO INC(i) END;
+      p.pid := i; pid := i;
+      procs[i] := p;
+      NEW(p.cor); ASSERT(p.cor # NIL);
+      Coroutines.Init(p.cor, p.proc, stAdr, stSize, stHotSize, p.pid);
+      ProcTimers.Disable(p.pid);
+      res := OK
     ELSE
-      (* the process was installed by a parent process *)
-      (* hence we need to allow that parent to re-install it properly *)
-      Remove(p)
+      res := Failed
     END
-  END Reset;
+  END Init;
 
-
-  PROCEDURE ResetMe*;
+  PROCEDURE New*(p: Process; proc: PROC; stack: ARRAY OF BYTE; stHotSize, prio: INTEGER; VAR pid, res: INTEGER);
   BEGIN
-    Cp.state := StateReset;
-    Coroutines.Transfer(Cp.cor, loop)
-  END ResetMe;
+    Init(p, proc, SYSTEM.ADR(stack), LEN(stack), stHotSize, prio, pid, res)
+  END New;
 
-
-  PROCEDURE ForAll*(system, essential, other: PROCEDURE(p: Process));
-    VAR p0: Process;
+  PROCEDURE Enable*(p: Process);
   BEGIN
-    p0 := procs;
-    WHILE p0 # NIL DO
-      IF p0.ptype = SystemProc THEN
-        system(p0)
-      ELSIF p0.ptype = EssentialProc THEN
-        essential(p0)
-      ELSE
-        other(p0)
-      END;
-      p0 := p0.next
-    END;
-  END ForAll;
+    slotIn(p);
+    INCL(queued, p.pid)
+  END Enable;
 
-
-  PROCEDURE SetFinaliser*(p: Process; finalise: Handler);
+  PROCEDURE Disable*(p: Process);
   BEGIN
-    p.finalise := finalise
-  END SetFinaliser;
+    slotOut(p);
+    EXCL(queued, p.pid)
+  END Disable;
 
-
-  PROCEDURE SetPeriod*(period: INTEGER);
-  BEGIN
-    ASSERT(period > NotTimed);
-    Cp.period := period;
-    ProcTimers.SetPeriod(Cp.pn, period)
-  END SetPeriod;
-
-
-  PROCEDURE SetPrio*(prio: INTEGER);
-  (* changes process chain link order -- costly! *)
-  BEGIN
-    Cp.prio := prio;
-    slotOut(Cp); slotIn(Cp)
-  END SetPrio;
-
-
-  PROCEDURE SetWatchdogOff*;
-  BEGIN
-    Cp.watchdogOff := TRUE
-  END SetWatchdogOff;
-
+  (* in-process api *)
 
   PROCEDURE Next*;
   BEGIN
-    IF Cp.period > NotTimed THEN
-      Cp.state := StateTimed
+    IF Cp.trigger = TrigNone THEN
+      slotIn(Cp);
+      INCL(queued, Cp.pid)
     ELSE
-      Cp.state := StateActive; INCL(activeP, Cp.pn)
+      slotOut(Cp);
+      EXCL(queued, Cp.pid)
     END;
     Coroutines.Transfer(Cp.cor, loop)
   END Next;
 
 
-  PROCEDURE DelayMe*(delay: INTEGER);
+  PROCEDURE SetPeriod*(period: INTEGER);
   BEGIN
-    Cp.state := StateDelayed;
-    (***
-    ProcDelay.SetDelay(Cp.pn, delay); (* also enables controller *)
-    *)
-    Coroutines.Transfer(Cp.cor, loop)
-  END DelayMe;
+    Cp.period := period;
+    Cp.trigger := TrigSome;
+    ProcTimers.SetPeriod(Cp.pid, period) (* also enables timer *)
+  END SetPeriod;
 
 
-  PROCEDURE Wait*;
-  (* note: let ProcTimers running *)
+  PROCEDURE SetName*(name: ARRAY OF CHAR);
   BEGIN
-    (***
-    CHECK(Cp, {3});
-    *)
-    Cp.state := StateAwaiting;
-    (***
-    ProcDevsig.Disable(Cp.pn);
-    *)
-    Coroutines.Transfer(Cp.cor, loop)
-  END Wait;
+    Cp.name := name
+  END SetName;
 
 
-  PROCEDURE AwaitDevSignal*(devSig: INTEGER);
-  (* note: let ProcTimers running *)
+  PROCEDURE SetNoWatchdog*;
   BEGIN
-    (***
-    CHECK(Cp, {3});
-    *)
-    Cp.state := StateAwaitingDevSig;
-    (*
-    ProcDevsig.SetSignal(Cp.pn, devSig); (* enables controller *)
-    *)
-    Coroutines.Transfer(Cp.cor, loop)
-  END AwaitDevSignal;
+    Cp.watchdog := FALSE
+  END SetNoWatchdog;
 
 
-  PROCEDURE Activate*(p: Process);
+  (* manage processes *)
+
+  PROCEDURE GetName*(pid: INTEGER; VAR name: ProcName);
   BEGIN
-    (***
-    CHECK(p, {5});
-    *)
-    p.state := StateActive; INCL(activeP, p.pn)
-  END Activate;
+    name := procs[pid].name
+  END GetName;
 
-
-  PROCEDURE SetTimeout*(timeout: INTEGER);
+  (* loop/scanner coroutine code *)
+  (* scan for hw signals to schedule processes *)
+(*
+  PROCEDURE printQ;
+    VAR p0: Process;
   BEGIN
-    ASSERT(timeout > 0);
-    (***
-    ProcDelay.SetDelay(Cp.pn, timeout)
-    *)
-  END SetTimeout;
+    p0 := cp;
+    WHILE p0 # NIL DO
+      DebugOut.WriteLine("q ", p0.name, "", -1);
+      p0 := p0.next
+    END;
+    DebugOut.WriteLine("---", "", "", -1)
+  END printQ;
+*)
 
-
-  PROCEDURE TriggerNotAlive*;
+  PROCEDURE loopc;
+    VAR pid: INTEGER; readyT: SET;
   BEGIN
-    (***
-    Interrupts.Trigger(NotAliveIntNum)
-    *)
-  END TriggerNotAlive;
-
-
-  PROCEDURE RetVal*(): INTEGER;
-  BEGIN
-    RETURN Cp.retVal
-  END RetVal;
-
-
-  PROCEDURE Id*(VAR id: ProcId);
-  BEGIN
-    IF Cp # NIL THEN
-      id := Cp.id
-    ELSE
-      id := "---"
-    END
-  END Id;
-
-
-  PROCEDURE No*(): INTEGER;
-  BEGIN
-    RETURN Cp.pn
-  END No;
-
-
-  PROCEDURE Time*(): LONGINT;
-  BEGIN
-    RETURN Kernel.Time()
-  END Time;
-
-
-  PROCEDURE nextReady(VAR cp: Process): Process;
-  BEGIN
-    WHILE (cp # NIL) & (cp.state # StateReady) DO cp := cp.next END;
-    RETURN cp
-  END nextReady;
-
-
-  PROCEDURE Loop;
-    CONST SamplingTime = 1000;
-    VAR
-      readyT, readyS, readyD: SET;
-      p0, cp: Process;
-      pn: INTEGER;
-  BEGIN
-    cp := NIL;
-    (***
-    ProcMonitor.StartSampling(SamplingTime);
-    *)
-    (*Texts.WriteString(W, "loop"); Texts.WriteLn(W);*)
+    LED(0F8H);
     REPEAT
-      (***
-      ProcMonitor.ResetEvalMon;
-      *)
-      ProcTimers.GetReadyStatus(readyT);
-      (***
-      ProcDevsig.GetReadyStatus(readyS);
-      ProcDelay.GetReadyStatus(readyD);
-      IF (readyT + readyS + readyD + activeP) # {} THEN
-      *)
-      readyS := {}; readyD := {};
-      IF (readyT + activeP) # {} THEN
-        p0 := procs;
-        WHILE p0 # NIL DO
-          pn := p0.pn;
-
-          (* temp "solution" *)
-          IF p0.state = StateReady THEN
-            INC(p0.ovflCnt)
-          END;
-
-          (* delays and timeouts *)
-          IF pn IN readyD THEN
-            (***
-            CHECK(p0, {StateDelayed, StateAwaiting, StateAwaitingDevSig, StateTimed});
-            *)
-            (***
-            ProcDelay.Disable(pn); (* also resets ready signal *)
-            *)
-            IF p0.state = StateDelayed THEN
-              p0.retVal := p0.state; p0.state := StateReady
-            ELSE
-              p0.retVal := Timeout; p0.state := StateReady
-            END
-          END;
-
-          (* device signals *)
-          IF pn IN readyS THEN
-            (***
-            CHECK(p0, {StateAwaitingDevSig});
-            *)
-            (***
-            ProcDelay.Disable(pn); (* also resets ready signal *)
-            ProcDevsig.Disable(pn); (* also resets ready signal *)
-            *)
-            p0.retVal := p0.state; p0.state := StateReady
-          END;
-
-          (* periodic timing *)
-          IF pn IN readyT THEN
-            (***
-            CHECK(p0, {StateTimed, StateDelayed, StateAwaiting, StateAwaitingDevSig});
-            *)
-            ProcTimers.ClearReady(pn);
-            IF p0.state = StateTimed THEN
-              (***
-              ProcDelay.Disable(pn);
-              *)
-              p0.retVal := p0.state; p0.state := StateReady
-            END
-          END;
-
-          (* active processes *)
-          IF pn IN activeP THEN
-            (***
-            CHECK(p0, {StateActive});
-            *)
-            (***
-            ProcDelay.Disable(pn);
-            *)
-            EXCL(activeP, pn);
-            p0.retVal := p0.state; p0.state := StateReady
-          END;
-
-          p0 := p0.next
-        END;
-        cp := procs;
-      END;
-      (***
-      ProcMonitor.CaptureEvalMon;
-      ProcMonitor.ResetExecMon;
-      *)
       Watchdog.Reset;
-      Cp := nextReady(cp);
-      IF Cp # NIL THEN
-        IF Cp.watchdogOff THEN Watchdog.Stop END;
-        Cp.state := StateRunning;
-        (***
-        ProcMonitor.StartProcMon(Cp.maxRunTime);
-        *)
-        Coroutines.Transfer(loop, Cp.cor);
-        (***
-        ProcMonitor.GetProcMon(Cp.maxRunTime, Cp.runTime);
-        *)
-        IF Cp.state = StateReset THEN Reset(Cp) END; (* allows procs to reset themselves, see 'ResetMe' *)
-        (* Cp.state is set by yielding7reset procedure *)
-        (***
-        CHECK(Cp, {StateActive, StateTimed, StateDelayed, StateAwaiting, StateAwaitingDevSig});
-        *)
-        Cp := NIL
+      ProcTimers.GetReadyStatus(readyT);
+      IF readyT # {} THEN
+        LED(0F9H);
+        pid := 0;
+        WHILE pid < MaxNumProcs DO
+          IF pid IN readyT THEN
+            (*printQ;*)
+            ASSERT(procs[pid].trigger = TrigSome);
+            slotIn(procs[pid]);
+            INCL(queued, pid);
+            ProcTimers.ClearReady(pid);
+            (*printQ*)
+          END;
+          INC(pid)
+        END
       END;
-      (***
-      ProcMonitor.CaptureExecMon;
-      IF ProcMonitor.ValuesReady() THEN
-        ProcMonitor.GetMax(Eval, Exec);
-        IF Eval > MaxEval THEN MaxEval := Eval END;
-        IF Exec > MaxExec THEN MaxExec := Exec END;
-        ProcMonitor.StartSampling(SamplingTime)
+      IF cp # NIL THEN
+        LED(0FAH);
+        IF ~cp.watchdog THEN Watchdog.Stop END;
+        Cp := cp;
+        SysCtrl.SetCpPid(cp.pid);
+        Coroutines.Transfer(loop, cp.cor);
+        Cp := NIL;
+        SysCtrl.SetCpPid(0)
       END
-      *)
-      Eval := 1; Exec := 1; MaxEval := 1; MaxExec := 1;
     UNTIL FALSE
-  END Loop;
+  END loopc;
 
+  (* create loop/scanner coroutine *)
 
-  PROCEDURE GetProcData*(VAR p: Process; pd: ProcessData);
-  (* p = NIL as passed indicates the start of a series of queries.
-  Then the client uses p as indicator if the returned values are valid,
-  and will pass the same p back on the next query *)
+  PROCEDURE Go*;
+    CONST SP = 14;
+    VAR jump: Coroutines.Coroutine;
   BEGIN
-    IF p = NIL THEN p := procs ELSE p := p.next END;
-    IF p # NIL THEN
-      pd.id := p.id;
-      pd.pn := p.pn;
-      pd.cn := p.cor.id;
-      pd.prio := p.prio;
-      pd.period := p.period;
-      pd.ptype := p.ptype;
-      pd.state := p.state;
-      pd.stackAdr := p.cor.stackAdr;
-      pd.stackSize := p.cor.stackSize;
-      pd.stackMax := p.cor.stackMax;
-      pd.stackHotSize := p.cor.stackHotLimit - p.cor.stackAdr;
-      pd.maxRunTime := p.maxRunTime;
-      pd.runTime := p.runTime;
-      pd.ovflCnt := p.ovflCnt;
-      p.ovflCnt := 0
+    LED(0F6H);
+    SYSTEM.LDREG(SP, LoopStackTop - 128);
+    NEW(jump);
+    Coroutines.Init(loop, loopc, LoopStackBottom, LoopStackSize, LoopStackHotSize, LoopId);
+    LED(0F7H);
+    Coroutines.Transfer(jump, loop)
+  END Go;
+
+  (* process info *)
+
+  PROCEDURE GetProcData*(VAR pd: ProcessData; VAR pid: INTEGER);
+    VAR p0: Process;
+  BEGIN
+    REPEAT
+      INC(pid)
+    UNTIL (pid = MaxNumProcs) OR (procs[pid] # NIL);
+    IF pid = MaxNumProcs THEN
+      pid := 0
+    ELSE
+      p0 := procs[pid];
+      pd.pid := p0.pid;
+      pd.prio := p0.prio;
+      pd.name := p0.name;
+      pd.trigger := p0.trigger;
+      pd.period := p0.period;
+      pd.stAdr := p0.cor.stAdr;
+      pd.stSize := p0.cor.stSize;
+      pd.stHotSize := p0.cor.stHotLimit - p0.cor.stAdr;
+      pd.stMin := p0.cor.stMin;
     END
   END GetProcData;
 
-
-  PROCEDURE GetSchedulerData*(pd: ProcessData);
+  PROCEDURE GetLoopData*(VAR pd: ProcessData);
   BEGIN
-    pd.stackAdr := SchedulerStackBottom;
-    pd.stackSize := SchedulerStackSize;
-    pd.stackMax := loop.stackMax;
-    pd.stackHotSize := SchedulerStackHotSize;
-    pd.cn := loop.id;
-  END GetSchedulerData;
-
+    pd.stAdr := LoopStackBottom;
+    pd.stSize := LoopStackSize;
+    pd.stMin := loop.stMin;
+    pd.stHotSize := LoopStackHotSize
+  END GetLoopData;
 
   PROCEDURE GetTimerData*(VAR td: ARRAY OF INTEGER);
   BEGIN
@@ -564,171 +275,23 @@ MODULE Processes;
     td[4] := P4; td[5] := P5; td[6] := P6; td[7] := P7
   END GetTimerData;
 
-
-  PROCEDURE auditc;
-    VAR logged: BOOLEAN; addr: INTEGER;
-  BEGIN
-    logged := FALSE;
-    auditCnt := AuditCount;
-    SetPeriod(AuditPeriod);
-    REPEAT
-      Next;
-      DEC(auditCnt);
-      IF auditCnt = 0 THEN
-        IF ~logged THEN
-          SysCtrl.SetError(0, 0, 0);
-          le.event := Log.System; le.cause := Log.SysOK;
-          SysCtrl.GetReg(le.more0);
-          Log.Put(le);
-          logged := TRUE
-        END;
-        auditCnt := AuditCount
-      END
-    UNTIL FALSE
-  END auditc;
-
-
-  PROCEDURE InstallAudit*;
-    VAR res: INTEGER;
-  BEGIN
-    Init(audit, auditc, auditStack, AuditStackHotSize, SystemProc, AuditPrio, AuditPrId);
-    Install(audit, res)
-  END InstallAudit;
-
-
-  PROCEDURE RecoverAudit*;
-  BEGIN
-    InstallAudit
-  END RecoverAudit;
-
-
-  PROCEDURE Go*;
-    VAR jump: Coroutines.Coroutine; (* will be collected *)
-  BEGIN
-    (* Shift stack pointer down, so Coroutines.Init can set up the top of the stack for the scheduler. *)
-    (* Called from Oberon body and Errors.???, which both use the stack area just below the heap *)
-    (* which is also the scheduler stack, which we want to initialise... *)
-    SYSTEM.LDREG(SP, SchedulerStackTop - 128);
-    (*Texts.WriteString(W, "go ");*)
-    NEW(jump);
-    Coroutines.Init(loop, Loop, SchedulerStackBottom, SchedulerStackSize, SchedulerStackHotSize, 0);
-    (*
-    Texts.WriteString(W, "reset");
-    Texts.WriteHex(W, loop.stackAdr); Texts.WriteHex(W, loop.stackHotLimit); Texts.WriteHex(W, SYSTEM.REG(SP));
-    Texts.WriteHex(W, SchedulerStackTop);  Texts.WriteLn(W);
-    *)
-    Coroutines.Transfer(jump, loop);
-    (* we'll not return here *)
-  END Go;
-
+  (* module initialisation *)
 
   PROCEDURE initM;
+    VAR i: INTEGER;
   BEGIN
-    (* set up basic values *)
-    procs := NIL;
-    Cp := NIL;
-    NumProcs := 0;
-    installedP := {}; activeP := {};
-    NEW(audit);
-
-    (* configure process timers *)
+    i := 0;
+    WHILE i < MaxNumProcs DO
+      procs[i] := NIL; INC(i)
+    END;
+    cp := NIL; Cp := NIL;
+    queued := {};
     ProcTimers.Init(P0, P1, P2, P3, P4, P5, P6, P7);
-
-    (* the scheduler coroutine *)
-    (* the scheduler stack is at the top of the stack area *)
-    SchedulerStackTop := Kernel.stackOrg;
-    SchedulerStackBottom := SchedulerStackTop - SchedulerStackSize;
-    NEW(loop); ASSERT(loop # NIL);
-    INCL(installedP, 0);
-    (***
-    SYSTEM.GET(ClockFreqAdr, ClockFreq);
-    IF ClockFreq # 0 THEN
-      ClockPeriod := 1000000 DIV (ClockFreq DIV 1000) (* nanoseconds *)
-    END
-    *)
+    LoopStackTop := Kernel.stackOrg;
+    LoopStackBottom := LoopStackTop - LoopStackSize;
+    NEW(loop);
   END initM;
 
 BEGIN
   initM
 END Processes.
-
-(*
-  PROCEDURE CHECK(pid: ARRAY OF CHAR; state: INTEGER; allowedStates: SET);
-    CONST BtnSwiAdr = -84; SwiFirst = 0; SwiLast = 3; CheckSwitch = 3;
-    VAR i: INTEGER; swi: SET;
-  BEGIN
-    SYSTEM.GET(BtnSwiAdr, swi);
-    swi := BITS(BFX(ORD(swi), SwiLast, SwiFirst));
-    IF CheckSwitch IN swi THEN
-      IF ~(state IN allowedStates) THEN
-        Texts.WriteLn(W);
-        Texts.WriteString(W, pid);
-        Texts.WriteString(W, " state: "); Texts.WriteInt(W, state, 0);
-        Texts.WriteString(W, " allowed: ");
-        FOR i := 0 TO MaxState DO
-          IF i IN allowedStates THEN Texts.WriteInt(W, i, 3) END
-        END;
-        Texts.WriteLn(W)
-      END
-    END
-  END CHECK;
-*)
-(*
-  PROCEDURE CHECK(p: Process; allowedStates: SET);
-    CONST BtnSwiAdr = -84; SwiFirst = 0; SwiLast = 3; CheckSwitch = 3;
-    VAR i: INTEGER; swi: SET;
-  BEGIN
-    SYSTEM.GET(BtnSwiAdr, swi);
-    swi := BITS(BFX(ORD(swi), SwiLast, SwiFirst));
-    IF CheckSwitch IN swi THEN
-      IF ~(p.state IN allowedStates) THEN
-        Texts.WriteLn(W);
-        Texts.WriteString(W, p.id);
-        Texts.WriteString(W, " state: "); Texts.WriteInt(W, p.state, 0);
-        Texts.WriteString(W, " allowed: ");
-        FOR i := 0 TO MaxState DO
-          IF i IN allowedStates THEN Texts.WriteInt(W, i, 3) END
-        END;
-        Texts.WriteLn(W)
-      END
-    END
-  END CHECK;
-*)
-
-(*
-  PROCEDURE Suspend*(p: Process);
-  BEGIN
-    p.state := StateAwaiting;
-    ProcTimers.Disable(p.pn);
-    ProcDelay.Disable(p.pn);
-    ProcDevsig.Disable(p.pn);
-  END Suspend;
-
-
-  PROCEDURE SuspendMe*;
-  BEGIN
-    Suspend(Cp);
-    Coroutines.Transfer(Cp.cor, loop)
-  END SuspendMe;
-*)
-
-(*
-  PROCEDURE SetTimeout*(timeout: INTEGER);
-  BEGIN
-    ProcDelay.SetDelay(Cp.pn, timeout)
-  END SetTimeout;
-
-
-  PROCEDURE CancelTimeout*;
-  BEGIN
-    ProcDelay.CancelDelay(Cp.pn)
-  END CancelTimeout;
-*)
-(*
-  PROCEDURE TimedOut(): BOOLEAN;
-    VAR ready: SET;
-  BEGIN
-    ProcDelay.GetReadyStatus(ready);
-    RETURN Cp.pn IN ready
-  END TimedOut;
-*)

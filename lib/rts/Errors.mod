@@ -25,6 +25,7 @@ MODULE Errors;
     REPEAT UNTIL FALSE
   END resetSystem;
 
+
   PROCEDURE setModule(VAR le: Log.Entry);
     VAR mod: Modules.Module; adr: INTEGER;
   BEGIN
@@ -41,17 +42,20 @@ MODULE Errors;
     END
   END setModule;
 
+
   PROCEDURE setProc(VAR le: Log.Entry);
+    VAR pid: INTEGER;
   BEGIN
-    IF Procs.Cp # NIL THEN
-      Procs.Id(le.procId)
-    ELSE
+    SysCtrl.GetCpPid(pid);
+    IF pid = 0 THEN
       le.procId := "---"
+    ELSE
+      Procs.GetName(pid, le.procId)
     END
   END setProc;
 
 
-  PROCEDURE reset; (* SP = stackOrg *)
+  PROCEDURE reset; (* SP = stackOrg, set in boot loader *)
     VAR errorNo, addr, trapInstruction, abortNo, trapNo, trapPos: INTEGER;
   BEGIN
     SysCtrl.GetError(errorNo, addr);
@@ -69,7 +73,7 @@ MODULE Errors;
         le.cause := abortNo;
         le.event := Log.Abort;
         setModule(le);
-        le.procId := "***";
+        setProc(le);
         Log.Put(le)
       ELSE (* trap *)
         SYSTEM.GET(addr, trapInstruction);
@@ -79,7 +83,7 @@ MODULE Errors;
         le.more0 := trapPos;
         le.adr0 := addr;
         setModule(le);
-        le.procId := "***";
+        setProc(le);
         Log.Put(le)
       END
     END;
@@ -91,7 +95,7 @@ MODULE Errors;
   END reset;
 
 
-  PROCEDURE trap(VAR a: INTEGER; b: INTEGER);
+  PROCEDURE trap(VAR a: INTEGER; b: INTEGER); (* uses process stack *)
     VAR adr, trapNo, trapInstruction: INTEGER;
   BEGIN
     adr := SYSTEM.REG(LNK); (* trap was called via BL, hence LNK contains the return address = offending location + 4 *)
@@ -118,49 +122,3 @@ MODULE Errors;
   END Recover;
 
 END Errors.
-
-(*
-  PROCEDURE error;
-  BEGIN
-    (* from here, the scheduler stack is used *)
-    (* we need to get out of the error-inducing coroutine's stack, so any corrective measures, such as *)
-    (* resetting the coroutine, and this code don't interfere with each other *)
-    SYSTEM.LDREG(SP, Procs.SchedulerStackTop - 8); (* 8: for LNK, x; stacked LNK will contain garbage *)
-
-    Start.Arm;
-    restartSystem;
-
-  END error;
-*)
-
-(*
-  PROCEDURE abort;
-  BEGIN
-    (*
-    Calltrace.Pop(x); (* remove the invalid LNK value *)
-    *)
-    (* could set the stack here, but let's be consistent with trap *)
-    IF ~handlingError THEN
-      handlingError := TRUE;
-
-      le.adr0 := SysCtrl.AbortAdr; DEC(le.adr0, 4);
-      le.cause := SysCtrl.AbortCause;
-      le.event := Log.Abort;
-      setModule(le); setProc(le);
-      Log.Put(le);
-      error;
-
-      (* we should not return here *)
-      le.event := Log.System; le.cause := Log.SysFault;
-      Log.Put(le);
-      le.cause := Log.SysRestart;
-      Log.Put(le);
-      restartSystem
-    ELSE (* error in error handling, bail out *)
-      le.event := Log.System; le.cause := Log.SysErrorAbort;
-      Log.Put(le);
-      (* restart logging done upon restart, cf. module Oberon *)
-      restartSystem
-    END
-  END abort;
-*)

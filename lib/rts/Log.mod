@@ -56,7 +56,7 @@ MODULE Log;
 
     (* log buffer hw addresses *)
     DataAdr = DevAdr.LogDataAdr;
-    IndexAdr = DevAdr.LogIndexAdr;
+    IndexAdr = DataAdr + 4;
 
     EntrySize = 64; (* must ve the size in bytes of Entry *)
 
