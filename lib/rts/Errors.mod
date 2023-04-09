@@ -1,7 +1,8 @@
 (**
   Run-time error handling
+  plus trap handler for NEW (trap 0)
   --
-  Severely stripped down version just to get the minimal system running.
+
   --
   2021 - 2023 Gray, gray@grayraven.org
   http://oberon-rts.org/licences
@@ -10,92 +11,180 @@
 MODULE Errors;
 
   IMPORT
-    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start, DebugOut;
+    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start;
 
   CONST
-    LNK = 15;
+    (* traps *)
+    ArrayIndex* = 1;
+    TypeGuard* = 2;
+    CopyOverflow* = 3;
+    NilPointer* = 4;
+    IllegalCall* = 5;
+    DivZero* = 6;
+    Assertion* = 7;
+
+    (* aborts *)
+    Reset* = 08H + SysCtrl.Reset;
+    Kill* = 08H + SysCtrl.Kill;
+    Watchdog* = 08H + SysCtrl.Watchdog;
+    StackOverflowLim* = 08H + SysCtrl.StackOverflowLim;
+    StackOverflowHot* = 08H + SysCtrl.StackOverflowLim;
+
 
   VAR
+    ForceRestart*: SET; (* system will always be restarted upon these errors *)
+    handlingError: BOOLEAN;
     le: Log.Entry;
+
+  PROCEDURE SetForceRestart*(errors: SET);
+  BEGIN
+    ForceRestart := errors
+  END SetForceRestart;
 
 
   PROCEDURE resetSystem;
+  (* hardware-reset the system *)
+  (* will result in restart via SysCtrl.SetRestart *)
   BEGIN
     SysCtrl.ResetSystem;
     REPEAT UNTIL FALSE
   END resetSystem;
 
 
-  PROCEDURE setModule(VAR le: Log.Entry);
-    VAR mod: Modules.Module; adr: INTEGER;
+  PROCEDURE addModuleInfo(addr: INTEGER; VAR le: Log.Entry);
+    VAR mod: Modules.Module;
   BEGIN
-    mod := Modules.root; adr := le.adr0;
-    WHILE (mod # NIL) & ((adr < mod.code) OR (adr >= mod.imp)) DO mod := mod.next END;
+    mod := Modules.root;
+    WHILE (mod # NIL) & ((addr < mod.code) OR (addr >= mod.imp)) DO mod := mod.next END;
     IF mod # NIL THEN
       le.adr1 := SYSTEM.VAL(INTEGER, mod);
       le.str0 := mod.name;
-      le.more1 := (adr - mod.code) DIV 4;
+      le.more1 := (addr - mod.code) DIV 4;
     ELSE
       le.adr1 := 0;
       le.str0 := "unknown module";
       le.more1 := 0
     END
-  END setModule;
+  END addModuleInfo;
 
 
-  PROCEDURE setProc(VAR le: Log.Entry);
-    VAR pid: INTEGER;
+  PROCEDURE addProcInfo(pid: INTEGER; VAR le: Log.Entry);
   BEGIN
-    SysCtrl.GetCpPid(pid);
-    IF pid = 0 THEN
-      le.procId := "---"
+    IF pid = 0 THEN (* loop/scanner *)
+      le.name := "---"
     ELSE
-      Procs.GetName(pid, le.procId)
+      Procs.GetName(pid, le.name)
     END
-  END setProc;
+  END addProcInfo;
 
+  (*
+  Entry point after the bootloader if the system is not reloaded from disk.
+  At this point, the system has been hardware-reset, nothing else.
 
-  PROCEDURE reset; (* SP = stackOrg, set in boot loader *)
-    VAR errorNo, addr, trapInstruction, abortNo, trapNo, trapPos: INTEGER;
+  That is:
+  * the ready queue and Cp on Processes are as per the error occurrence
+  * the processes' state is as per the error occurrence
+  * which includes the error-inducing process, or the one interrupted
+    by the hardware-error-signal, which may or may not be the one
+    producing the error, eg. in the case of the reset or kill buttons
+
+  NOT hardware reset, ie. values are still set in the hardware, as per the hw design:
+  * enable and ticker assigments of process timers
+  * error register and parts of the system control and status register
+
+  The bootloader:
+  * allocates the stack in the memory area starting from Kernel.stackOrg down
+  * disables he stack monitor
+  * disables the watchdog
+  *)
+
+  PROCEDURE reset;
+    VAR errorNo, addr, pid, trapInstruction, abortNo, trapNo, trapPos: INTEGER;
   BEGIN
+    (* provided by trap handler (below), or by the hardware for aborts *)
     SysCtrl.GetError(errorNo, addr);
+    (* set by loop/scanner upon activating a process *)
+    SysCtrl.GetCpPid(pid);
 
-    DebugOut.WriteLine("abort", "", "", -1);
-    DebugOut.WriteLine("errorNo", "", "", errorNo);
-    DebugOut.WriteLine("address", "", "", addr);
+    SysCtrl.SetErrPid(pid);
 
-    IF addr # 0 THEN
-      IF (errorNo = 0) OR (errorNo >= 010H) THEN (* abort *)
-        (* note: trap 0 is not an error, so errorNo = 0 means abortNo = 0 *)
-        abortNo := errorNo DIV 010H;
-        DebugOut.WriteLine("abort no", "", "", abortNo);
-        le.adr0 := addr;
-        le.cause := abortNo;
-        le.event := Log.Abort;
-        setModule(le);
-        setProc(le);
-        Log.Put(le)
-      ELSE (* trap *)
-        SYSTEM.GET(addr, trapInstruction);
-        trapNo := trapInstruction DIV 10H MOD 10H;
-        trapPos := trapInstruction DIV 100H MOD 10000H;
-        le.cause := trapNo;
-        le.more0 := trapPos;
-        le.adr0 := addr;
-        setModule(le);
-        setProc(le);
-        Log.Put(le)
-      END
+    (* error logging *)
+    IF errorNo >= 08H THEN (* abort *)
+      abortNo := errorNo MOD 08H;
+      le.event := Log.Abort;
+      le.cause := abortNo;
+      le.adr0 := addr;
+      addModuleInfo(addr, le);
+      addProcInfo(pid, le);
+      Log.Put(le)
+    ELSE (* trap *)
+      SYSTEM.GET(addr, trapInstruction);
+      trapNo := trapInstruction DIV 10H MOD 10H;
+      trapPos := trapInstruction DIV 100H MOD 10000H;
+      le.event := Log.Trap;
+      le.cause := trapNo;
+      le.adr0 := addr;
+      le.more0 := trapPos;
+      addModuleInfo(addr, le);
+      addProcInfo(pid, le);
+      Log.Put(le)
     END;
 
-    (* at this point we could also reset processes and whatnot, and just restart scheduling *)
-    Start.Arm;
-    SysCtrl.SetReload;
-    resetSystem
+    (* error handling and logging *)
+    IF ~handlingError THEN
+      handlingError := TRUE;
+      IF (errorNo IN ForceRestart) OR Procs.ForceRestart(pid) THEN
+        (* logging *)
+        le.event := Log.System;
+        le.cause := Log.SysRestart;
+        SysCtrl.GetReg(le.more0);
+        SysCtrl.GetError(le.more1, addr);
+        Log.Put(le);
+        (* actions *)
+        Start.Arm;
+        SysCtrl.SetRestart;
+        resetSystem
+      ELSE
+        (* logging *)
+        le.event := Log.System;
+        le.cause := Log.SysReset;
+        SysCtrl.GetReg(le.more0);
+        SysCtrl.GetError(le.more1, addr);
+        Log.Put(le);
+        (* actions *)
+        Procs.Recover;
+        Procs.OnError(pid);
+        SysCtrl.SetNoRestart;
+        Start.Disarm;
+        handlingError := FALSE;
+        Procs.Go;
+
+        (* we'll not return here, but... *)
+        (* logging *)
+        le.event := Log.System;
+        le.cause := Log.SysFault;
+        Log.Put(le);
+        (* actions *)
+        Start.Arm;
+        SysCtrl.SetRestart;
+        resetSystem
+      END
+    ELSE
+      (* error in error handling *)
+      (* logging *)
+      le.event := Log.System;
+      le.cause := Log.SysErrorInError;
+      Log.Put(le);
+      (* actions *)
+      Start.Arm;
+      SysCtrl.SetRestart;
+      resetSystem
+    END
   END reset;
 
 
   PROCEDURE trap(VAR a: INTEGER; b: INTEGER); (* uses process stack *)
+    CONST LNK = 15;
     VAR adr, trapNo, trapInstruction: INTEGER;
   BEGIN
     adr := SYSTEM.REG(LNK); (* trap was called via BL, hence LNK contains the return address = offending location + 4 *)
@@ -104,21 +193,20 @@ MODULE Errors;
     IF trapNo = 0 THEN (* execute NEW *)
       Kernel.New(a, b)
     ELSE (* error trap *)
-      SysCtrl.SetError(0, trapNo, adr);
-      SysCtrl.SetNoReload;
-      resetSystem
+      SysCtrl.SetError(trapNo, adr);
+      SysCtrl.SetNoRestart;
+      resetSystem (* will arrive at 'reset' above via boot loader *)
     END
   END trap;
 
 
-  PROCEDURE Install*;
+  PROCEDURE Init*;
   BEGIN
     Kernel.Install(SYSTEM.ADR(trap), 20H);
     Kernel.Install(SYSTEM.ADR(reset), 0H);
-    SysCtrl.SetNoReload (* all resets go through reset proc above *)
-  END Install;
-
-  PROCEDURE Recover*;
-  END Recover;
+    SysCtrl.SetNoRestart; (* all resets go through reset proc above *)
+    ForceRestart := {Reset, StackOverflowLim};
+    handlingError := FALSE
+  END Init;
 
 END Errors.

@@ -7,7 +7,7 @@
 
 MODULE LogView;
 
-  IMPORT SYSTEM, Log, Modules, Texts, Console := ConsoleC, RS232, SysCtrl;
+  IMPORT SYSTEM, Log, Modules, Texts, Console := ConsoleC, RS232, SysCtrl, Procs := Processes;
 
   VAR
     W: Texts.Writer;
@@ -17,21 +17,24 @@ MODULE LogView;
   BEGIN
     mod := SYSTEM.VAL(Modules.Module, le.adr1);
     Texts.WriteClock(W, le.when);
-    Texts.WriteString(W, " ABORT proc "); Texts.WriteString(W, le.procId);
+    Texts.WriteString(W, " ABORT");
+    IF le.cause = SysCtrl.Watchdog THEN
+      Texts.WriteString(W, " WDOG")
+    ELSIF le.cause = SysCtrl.Kill THEN
+      Texts.WriteString(W, " KILLB")
+    ELSIF le.cause = SysCtrl.Reset THEN
+      Texts.WriteString(W, " RSTB")
+    ELSIF le.cause = SysCtrl.StackOverflowLim THEN
+      Texts.WriteString(W, " SOFL")
+    ELSIF le.cause = SysCtrl.StackOverflowHot THEN
+      Texts.WriteString(W, " SOFH")
+    ELSE
+      Texts.WriteString(W, " ???")
+    END;
+    Texts.WriteString(W, " proc "); Texts.WriteString(W, le.name);
     Texts.WriteString(W, " in "); Texts.WriteString(W, le.str0);
     Texts.WriteString(W, " at"); Texts.WriteHex(W, le.adr0);
     Texts.WriteString(W, " line "); Texts.WriteInt(W, le.more1, 0);
-    IF le.cause = SysCtrl.WatchdogAbort THEN
-      Texts.WriteString(W, " watchdog")
-    ELSIF le.cause = SysCtrl.KillAbort THEN
-      Texts.WriteString(W, " reset button")
-    ELSIF le.cause = SysCtrl.StackOverflowAbort THEN
-      Texts.WriteString(W, " stack overflow");
-    ELSIF le.cause = SysCtrl.NotAliveAbort THEN
-      Texts.WriteString(W, " not alive procs")
-    ELSE
-      Texts.WriteString(W, " SYS ERROR: inconsistent data: invalid abort log cause")
-    END;
     Texts.WriteLn(W)
   END reportAbort;
 
@@ -42,7 +45,7 @@ MODULE LogView;
     mod := SYSTEM.VAL(Modules.Module, le.adr1);
     Texts.WriteClock(W, le.when);
     Texts.WriteString(W, " TRAP "); Texts.WriteInt(W, le.cause, 0);
-    Texts.WriteString(W, " proc "); Texts.WriteString(W, le.procId);
+    Texts.WriteString(W, " proc "); Texts.WriteString(W, le.name);
     Texts.WriteString(W, " in "); Texts.WriteString(W, le.str0);
     Texts.WriteString(W, " at"); Texts.WriteHex(W, le.adr0);
     Texts.WriteString(W, " pos "); Texts.WriteInt(W, le.more0, 0);
@@ -54,49 +57,29 @@ MODULE LogView;
   PROCEDURE reportSystem(le: Log.Entry);
   BEGIN
     Texts.WriteClock(W, le.when);
-    IF le.cause = Log.SysInit THEN
-      Texts.WriteString(W, " SYS INIT: kill non-system procs, reset system procs.")
-    ELSIF le.cause = Log.SysRecover THEN
-      Texts.WriteString(W, " SYS RECOVER: kill non-vital procs, reset vital procs.")
-    ELSIF le.cause = Log.SysReset THEN
-      Texts.WriteString(W, " SYS RESET: reset all procs.")
-    ELSIF le.cause = Log.SysRestart THEN
-      Texts.WriteString(W, " SYS RESTART: load system.");
+    IF le.cause = Log.SysColdStart THEN
+      Texts.WriteString(W, " SYS COLD START");
       Texts.WriteString(W, " SCR:"); Texts.WriteHex(W, le.more0);
       Texts.WriteString(W, " ERR:"); Texts.WriteHex(W, le.more1);
-      (*
-      Texts.WriteString(W, "  ");
-      IF le.more1 = SysCtrl.RestartFPGA THEN
-        Texts.WriteString(W, "FPGA")
-      ELSIF le.more1 = SysCtrl.RestartRstBtn THEN
-        Texts.WriteString(W, "RSTB")
-      ELSIF le.more1 = SysCtrl.RestartSW THEN
-        Texts.WriteString(W, "SW")
-      ELSIF le.more1 = SysCtrl.RestartSWother THEN
-        Texts.WriteString(W, "SWOTH")
-      ELSIF le.more1 = SysCtrl.RestartStackOvfl THEN
-        Texts.WriteString(W, "STOVFL")
-      ELSE
-        Texts.WriteString(W, "unknown")
-      END;
-      *)
+    ELSIF le.cause = Log.SysRestart THEN
+      Texts.WriteString(W, " SYS RESTART");
+      Texts.WriteString(W, " SCR:"); Texts.WriteHex(W, le.more0);
+      Texts.WriteString(W, " ERR:"); Texts.WriteHex(W, le.more1);
+    ELSIF le.cause = Log.SysReset THEN
+      Texts.WriteString(W, " SYS RESET");
+      Texts.WriteString(W, " SCR:"); Texts.WriteHex(W, le.more0);
+      Texts.WriteString(W, " ERR:"); Texts.WriteHex(W, le.more1);
     ELSIF le.cause = Log.SysHalt THEN
       Texts.WriteString(W, " SYS HALT")
     ELSIF le.cause = Log.SysFault THEN
-      Texts.WriteString(W, " SYS FAULT: internal error")
-    ELSIF le.cause = Log.SysErrorAbort THEN
-      Texts.WriteString(W, " SYS ERROR: abort in error handling")
-    ELSIF le.cause = Log.SysErrorTrap THEN
-      Texts.WriteString(W, " SYS ERROR: trap in error handling in ");
-      Texts.WriteString(W, le.str0);
-      Texts.WriteString(W, " trap "); Texts.WriteInt(W, le.more0, 0);
-      Texts.WriteString(W, " pos "); Texts.WriteInt(W, le.more2, 0);
-      Texts.WriteString(W, " line "); Texts.WriteInt(W, le.more1, 0)
+      Texts.WriteString(W, " SYS FAULT: internal error, restarting")
+    ELSIF le.cause = Log.SysErrorInError THEN
+      Texts.WriteString(W, " SYS ERROR: error in error handling, restarting")
     ELSIF le.cause = Log.SysOK THEN
-      Texts.WriteString(W, " SYS OK SCR:"); Texts.WriteHex(W, le.more0);
+      Texts.WriteString(W, " SYS AUDIT OK SCR:"); Texts.WriteHex(W, le.more0);
       Texts.WriteString(W, " ERR:"); Texts.WriteHex(W, le.more1)
     ELSIF le.cause = Log.SysProcsFull THEN
-      Texts.WriteString(W, " SYS too many procs: "); Texts.WriteString(W, le.procId);
+      Texts.WriteString(W, " SYS too many procs: "); Texts.WriteString(W, le.name);
     ELSIF le.cause = Log.SysProcsChange THEN
       Texts.WriteString(W, " SYS procs:"); Texts.WriteHex(W, le.more0); Texts.WriteHex(W, le.more1); Texts.WriteHex(W, le.more2)
     ELSIF le.cause = Log.SysCollect THEN
@@ -106,11 +89,14 @@ MODULE LogView;
     ELSIF le.cause = Log.SysRTCnotinst THEN
       Texts.WriteString(W, " SYS RTC not installed")
     ELSIF le.cause = Log.SysMemStart THEN
-      Texts.WriteString(W, " SYS start stack: "); Texts.WriteInt(W, le.more0, 0); Texts.WriteString(W, " heap: ");
+      Texts.WriteString(W, " SYS startup stack: "); Texts.WriteInt(W, le.more0, 0); Texts.WriteString(W, " heap: ");
       Texts.WriteInt(W, le.more2, 0); Texts.WriteString(W, " SP: "); Texts.WriteInt(W, le.more1, 0);
-    ELSIF le.cause = Log.SysStart THEN
-      Texts.WriteString(W, " SYS start error: "); Texts.WriteInt(W, le.more0, 0); Texts.WriteString(W, " table: ");
+    ELSIF le.cause = Log.SysStartTableError THEN
+      Texts.WriteString(W, " SYS start table error: "); Texts.WriteInt(W, le.more0, 0); Texts.WriteString(W, " table: ");
       Texts.WriteInt(W, le.more1, 0); Texts.WriteString(W, " entry: "); Texts.WriteInt(W, le.more2, 0)
+    ELSIF le.cause = Log.SysStartTableUsed THEN
+      Texts.WriteString(W, " SYS start table: "); Texts.WriteInt(W, le.more0, 0); Texts.WriteString(W, " set: ");
+      Texts.WriteInt(W, le.more1, 0);
     ELSE
       Texts.WriteString(W, " SYS ERROR: inconsistent data: sys log cause")
     END;
@@ -121,16 +107,21 @@ MODULE LogView;
   PROCEDURE reportProcess(le: Log.Entry);
   BEGIN
     Texts.WriteClock(W, le.when);
-    IF le.cause = Log.ProcInstall THEN
-      Texts.WriteString(W, " PROC INST: "); Texts.WriteString(W, le.procId); Texts.WriteInt(W, le.more0, 3)
-    ELSIF le.cause = Log.ProcRemove THEN
-      Texts.WriteString(W, " PROC RM: "); Texts.WriteString(W, le.procId); Texts.WriteInt(W, le.more0, 3)
-    ELSIF le.cause = Log.ProcRecover THEN
-      Texts.WriteString(W, " PROC RCVR: "); Texts.WriteString(W, le.procId); Texts.WriteInt(W, le.more0, 3)
+    IF le.cause = Log.ProcNew THEN
+      Texts.WriteString(W, " PROC NEW: "); Texts.WriteInt(W, le.more0, 0);
+      IF le.more1 = Procs.OK THEN
+        Texts.WriteString(W, " OK")
+      ELSE
+        Texts.WriteString(W, " FAIL")
+      END
+    ELSIF le.cause = Log.ProcEnable THEN
+      Texts.WriteString(W, " PROC EN: "); Texts.WriteInt(W, le.more0, 0);
+      Texts.WriteString(W, " "); Texts.WriteString(W, le.name);
+      Texts.WriteString(W, " trig: "); Texts.WriteInt(W, le.more1, 0);
+      IF le.more1 # Procs.TrigNone THEN Texts.WriteString(W, " tm: "); Texts.WriteInt(W, le.more2, 0) END;
     ELSIF le.cause = Log.ProcReset THEN
-      Texts.WriteString(W, " PROC RST: "); Texts.WriteString(W, le.procId); Texts.WriteInt(W, le.more0, 3)
-     ELSIF le.cause = Log.ProcOverflow THEN
-      Texts.WriteString(W, " PROC OVFL: "); Texts.WriteString(W, le.procId); Texts.WriteInt(W, le.more0, 3)
+      Texts.WriteString(W, " PROC RST: "); Texts.WriteInt(W, le.more0, 0);
+      Texts.WriteString(W, " "); Texts.WriteString(W, le.name)
     ELSE
       Texts.WriteString(W, " SYS ERROR: inconsistent data: proc log cause")
     END;

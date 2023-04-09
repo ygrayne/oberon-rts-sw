@@ -30,14 +30,12 @@ MODULE Log;
     Process* = 3;
 
     (* system log causes *)
-    SysInit* = 0;
-    SysReset* = 1;
-    SysRecover* = 2;
-    SysRestart* = 3;
+    SysColdStart* = 0;
+    SysRestart* = 1;
+    SysReset* = 2;
     SysHalt* = 4;
     SysFault* = 5;        (* internal error *)
-    SysErrorAbort* = 6;   (* abort in error handling *)
-    SysErrorTrap* = 7;    (* trap in error handling *)
+    SysErrorInError* = 6; (* error in error handling *)
     SysOK* = 8;
     SysProcsFull* = 9;    (* max num procs exceeded *)
     SysProcsChange* = 10; (* a proc was added or removed *)
@@ -45,14 +43,13 @@ MODULE Log;
     SysRTCinst* = 12;     (* RTC installed *)
     SysRTCnotinst* = 13;  (* RTC not installed *)
     SysMemStart* = 14;    (* memory values at startup *)
-    SysStart* = 15;       (* error when using start tables *)
+    SysStartTableError* = 15;  (* error when using start tables *)
+    SysStartTableUsed* = 7;    (* well, start tables used *)
 
     (* process log causes *)
-    ProcInstall* = 0;
-    ProcRemove* = 1;
-    ProcRecover* = 2;
-    ProcReset* = 3;
-    ProcOverflow* = 4;
+    ProcNew* = 0;
+    ProcEnable* = 1;
+    ProcReset* = 2;
 
     (* log buffer hw addresses *)
     DataAdr = DevAdr.LogDataAdr;
@@ -64,7 +61,7 @@ MODULE Log;
     (* each entry in the FPGA can hold 64 8-bit values *)
     Entry* = RECORD
       event*, cause*, more3*, more4*: BYTE;
-      procId*: ARRAY 4 OF CHAR;
+      name*: ARRAY 4 OF CHAR;
       when*: INTEGER;
       adr0*, adr1*: INTEGER;            (* error address, module address *)
       more0*, more1*, more2*: INTEGER;  (* additional data, event/cause-dependent *)

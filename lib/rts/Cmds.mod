@@ -21,7 +21,7 @@ MODULE Cmds;
 
   CONST
     Prio = 3;
-    Pid = "cmd";
+    Name = "cmd";
     StackHotSize = 512;
 
   TYPE
@@ -34,9 +34,9 @@ MODULE Cmds;
   VAR
     W: Texts.Writer;
     Par*: ParRef;
-    p: Procs.Process;
-    Installed*: BOOLEAN;
+    cmd: Procs.Process;
     le: Log.Entry;
+    pid: INTEGER;
 
 
   PROCEDURE writeError(res: INTEGER; command: ARRAY OF CHAR);
@@ -69,11 +69,17 @@ MODULE Cmds;
   END writeError;
 
 
-  PROCEDURE logError(res, tbl, no: INTEGER);
+  PROCEDURE logError(res, table, no: INTEGER);
   BEGIN
-    le.event := Log.System; le.cause := Log.SysStart; le.more0 := res;
-    le.more1 := tbl; le.more2 := no; Log.Put(le)
+    le.event := Log.System; le.cause := Log.SysStartTableError; le.more0 := res;
+    le.more1 := table; le.more2 := no; Log.Put(le)
   END logError;
+
+  PROCEDURE logUse(table, set: INTEGER);
+  BEGIN
+    le.event := Log.System; le.cause := Log.SysStartTableUsed;
+    le.more0 := table; le.more1 := set; Log.Put(le)
+  END logUse;
 
 
   PROCEDURE Call*(name: ARRAY OF CHAR; VAR res: INTEGER);
@@ -111,12 +117,9 @@ MODULE Cmds;
 
 
   PROCEDURE cmdc;
-  (* process code *)
     CONST REC = 21X;
-    VAR res, cnt, mode: INTEGER; ch: CHAR; valid: BOOLEAN; i, tbl: INTEGER;
+    VAR res, cnt, set: INTEGER; ch: CHAR; valid: BOOLEAN; i, table: INTEGER;
   BEGIN
-    Procs.SetNoWatchdog;
-    Procs.SetName(Pid);
     REPEAT
       Procs.Next;
       IF RS232.GetAvailable(Console.Dev, ch) THEN
@@ -142,23 +145,16 @@ MODULE Cmds;
           END
         END
       ELSIF Start.Armed() THEN
-        Start.GetMode(mode);
+        Start.GetSet(set);
+        Start.GetTable(table);
+        logUse(table, set);
         Texts.WriteLn(W);
-        IF mode = Start.InstallMode THEN
-          Texts.WriteString(W, "Install mode")
-        ELSE
-          Texts.WriteString(W, "Recovery mode")
-        END;
-        Texts.WriteLn(W);
-        Start.GetTable(tbl);
-        Texts.WriteString(W, "Loading restart table "); Texts.WriteInt(W, tbl, 0); Texts.WriteLn(W);
         FOR i := 0 TO Start.NumCmds - 1 DO
-          Start.GetCmd(mode, tbl, i, Par.text.string, valid);
+          Start.GetCmd(set, table, i, Par.text.string, valid);
           IF valid THEN
-            Texts.WriteString(W, "=> "); Texts.WriteString(W, Par.text.string); Texts.WriteLn(W);
             Call(Par.text.string, res);
             IF res # 0 THEN
-              logError(res, tbl, i);
+              logError(res, table, i);
             END
           END
         END;
@@ -169,27 +165,21 @@ MODULE Cmds;
   END cmdc;
 
 
-  PROCEDURE Install*;
-    VAR res, pid, stackAdr, stackSize: INTEGER;
+  PROCEDURE Init*;
+    VAR res, stackAdr, stackSize: INTEGER;
   BEGIN
-    IF ~Installed THEN
-      stackAdr := Kernel.stackOrg - Kernel.stackSize;
-      stackSize := Procs.LoopStackBottom - stackAdr;
-      Procs.Init(p, cmdc, stackAdr, stackSize, StackHotSize, Prio, pid, res);
-      Procs.Enable(p);
-      Installed := res = Procs.OK
-    END
-  END Install;
-
-
-  PROCEDURE Recover*;
-  BEGIN
-    Installed := FALSE;
-    Install
-  END Recover;
+    stackAdr := Kernel.stackOrg - Kernel.stackSize;
+    stackSize := Procs.LoopStackBottom - stackAdr;
+    Procs.Init(cmd, cmdc, stackAdr, stackSize, StackHotSize, pid, res);
+    Procs.SetPrio(cmd, Prio);
+    Procs.SetOnError(cmd, Procs.OnErrorReset, Procs.OnErrorHitDefault);
+    Procs.SetNoWatchdog(cmd);
+    Procs.SetName(cmd, Name);
+    Procs.Enable(cmd)
+  END Init;
 
 
 BEGIN
-  NEW(p); NEW(Par); NEW(Par.text);
-  W := Console.C; Installed := FALSE
+  NEW(cmd); NEW(Par); NEW(Par.text);
+  W := Console.C
 END Cmds.

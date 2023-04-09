@@ -23,10 +23,11 @@ MODULE SysCtrl;
     SysReset*        = 1;    (* = 1: reset system *)
 
     (* abort causes -- wired in FPGA, see sys ctrl*)
-    WatchdogAbort* = 0;
-    KillAbort* = 1;
-    StackOverflowAbort* = 2;
-    NotAliveAbort* = 3;
+    Reset* = 0;
+    Kill* = 1;
+    Watchdog* = 2;
+    StackOverflowLim* = 3;
+    StackOverflowHot* = 4;
 
 
   (* raw register ops *)
@@ -49,25 +50,25 @@ MODULE SysCtrl;
     SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) + {SysReset}))
   END ResetSystem;
 
-  PROCEDURE SetNoReload*;
+  PROCEDURE SetNoRestart*;
     VAR x: INTEGER;
   BEGIN
     SYSTEM.GET(SysCtrlRegAdr, x);
     SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) + {SysNoReload}))
-  END SetNoReload;
+  END SetNoRestart;
 
-  PROCEDURE SetReload*;
+  PROCEDURE SetRestart*;
     VAR x: INTEGER;
   BEGIN
     SYSTEM.GET(SysCtrlRegAdr, x);
     SYSTEM.PUT(SysCtrlRegAdr, ORD(BITS(x) - {SysNoReload}))
-  END SetReload;
+  END SetRestart;
 
 
   (* error handling *)
-  PROCEDURE SetError*(abortNo, trapNo, addr: INTEGER);
+  PROCEDURE SetError*(errorNo, addr: INTEGER);
   BEGIN
-    SYSTEM.PUT(SysCtrlErrAdr, LSL(addr, 8) + LSL(abortNo, 4) + trapNo);
+    SYSTEM.PUT(SysCtrlErrAdr, LSL(addr, 8) + errorNo);
   END SetError;
 
   PROCEDURE GetError*(VAR errorNo, addr: INTEGER);
@@ -75,13 +76,8 @@ MODULE SysCtrl;
   BEGIN
     SYSTEM.GET(SysCtrlErrAdr, x);
     errorNo := BFX(x, 7, 0);
-    addr := BFX(x, 31, 8);
-    (*
-    errorNo := x MOD 0100H;
-    addr := LSR(x, 8)
-    *)
+    addr := BFX(x, 31, 8)
   END GetError;
-
 
   PROCEDURE SetCpPid*(pid: INTEGER);
     VAR x: INTEGER;
@@ -97,6 +93,21 @@ MODULE SysCtrl;
     SYSTEM.GET(SysCtrlRegAdr, x);
     pid := BFX(x, 12, 8)
   END GetCpPid;
+
+  PROCEDURE SetErrPid*(pid: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(SysCtrlRegAdr, x);
+    BFI(x, 17, 13, pid);
+    SYSTEM.PUT(SysCtrlRegAdr, x)
+  END SetErrPid;
+
+  PROCEDURE GetErrPid*(VAR pid: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(SysCtrlRegAdr, x);
+    pid := BFX(x, 17, 13)
+  END GetErrPid;
 
 END SysCtrl.
 

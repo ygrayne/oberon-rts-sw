@@ -13,7 +13,7 @@
 MODULE Oberon;
 
   IMPORT
-     SYSTEM, Procs := Processes, GC, Kernel, Cmds, SysInstall, Log, SysCtrl, RTC, SPIdev, StackMonitor;
+     SYSTEM, Kernel, Procs := Processes, GC, Cmds, Audit, Log, SysCtrl, RTC, SPIdev, StackMonitor, Errors;
 
   CONST
     SP = 14;
@@ -47,13 +47,17 @@ MODULE Oberon;
   (* start-up stuff *)
 
   PROCEDURE logRestart;
-    VAR le: Log.Entry; addr: INTEGER;
+    VAR le: Log.Entry; scr, addr: INTEGER;
   BEGIN
-    le.event := Log.System; le.cause := Log.SysRestart;
-    SysCtrl.GetReg(le.more0);
-    SysCtrl.GetError(le.more1, addr);
-    Log.Put(le);
-    le.event := Log.System;
+    SysCtrl.GetReg(scr);
+    IF scr = 0 THEN
+      le.event := Log.System;
+      le.cause := Log.SysColdStart;
+      SysCtrl.GetReg(le.more0);
+      SysCtrl.GetError(le.more1, addr);
+      Log.Put(le);
+      le.event := Log.System;
+    END;
     IF RTC.Installed THEN
       le.cause := Log.SysRTCinst; le.more0 := RTCspiDevice; le.more1 := RTCchipselect
     ELSE
@@ -85,18 +89,24 @@ BEGIN
   (***
   RTC.Install(RTCspiDevice, RTCchipselect); (* nice for logging *)
   *)
-  logRestart;
   LED(0F2H);
+  logRestart;
   logMemData;
+  Procs.Install;
+  Errors.Init;
   LED(0F3H);
-  SysInstall.Install;
+  GC.Init;
   LED(0F4H);
+  Audit.Init;
+  LED(0F5H);
+  Cmds.Init;
+  LED(0F6H);
 
   (* from here, cmds will use most of the original stack, the scanner (loop) only keeps a small part
   at the top, see Procs.LoopStackSize *)
 
   GC.Collect; (* make sure we have all heap space available for startup loading by Cmds *)
-  LED(0F5H);
-  Procs.Go (* start scheduler *)
+  LED(0F7H);
+  Procs.Go; (* start loop/scanner *)
   (* we'll not return here *)
 END Oberon.

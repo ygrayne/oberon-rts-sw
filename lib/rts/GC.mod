@@ -9,22 +9,21 @@
 
 MODULE GC;
 
-  IMPORT Modules, Kernel, Files, Procs := Processes, Log;
+  IMPORT Modules, Kernel, Files, Procs := Processes, Log, LSB;
 
   CONST
-    GCperiod = 7;
-    GCname = "gc";
-    GCprio = 0;
-    (*GCptype = Procs.SystemProc;*)
-    GCstackSize = 512;
-    GCstackHot = 0;
+    Period = 7;
+    Name = "gc";
+    Prio = 0;
+    StackSize = 512;
+    StackHotSize = 0;
     GClimitDiv = 4; (* kick in when only 1/4 of heap space is left *)
 
   VAR
     gc: Procs.Process;
-    gcstack: ARRAY GCstackSize OF BYTE;
-    gcCount, heapSize, GClimit*: INTEGER;
-    gcPid: INTEGER;
+    stack: ARRAY StackSize OF BYTE;
+    count, heapSize, GClimit*: INTEGER;
+    pid: INTEGER;
 
 
   PROCEDURE collect;
@@ -45,41 +44,45 @@ MODULE GC;
     Log.Put(le)
   END collect;
 
+
   PROCEDURE gcc;
+    VAR ledr: BOOLEAN;
   BEGIN
-    Procs.SetPeriod(GCperiod);
-    Procs.SetName(GCname);
+    ledr := FALSE;
     REPEAT
       Procs.Next;
-      IF (gcCount = 0) OR (Kernel.allocated >= GClimit) THEN
+      IF (count = 0) OR (Kernel.allocated >= GClimit) THEN
         collect;
-        gcCount := 1;
-      END
+        count := 1;
+      END;
+      ledr := ~ledr;
+      IF ledr THEN LSB.SetRedLedsOn({0}) ELSE LSB.SetRedLedsOff({0}) END
     UNTIL FALSE
   END gcc;
 
 
   PROCEDURE Collect*;
   BEGIN
-    gcCount := 0
+    count := 0
   END Collect;
 
 
-  PROCEDURE Install*;
+  PROCEDURE Init*;
     VAR res: INTEGER;
   BEGIN
     heapSize := Kernel.heapLim - Kernel.heapOrg;
     GClimit := heapSize - (heapSize DIV GClimitDiv);
-    gcCount := 1;
-    NEW(gc);
-    Procs.New(gc, gcc, gcstack, GCstackHot, GCprio, gcPid, res);
+    count := 1;
+    Procs.New(gc, gcc, stack, StackHotSize, pid, res);
+    Procs.SetPrio(gc, Prio);
+    Procs.SetPeriod(gc, Period);  (* enables timer *)
+    Procs.SetName(gc, Name);
+    Procs.SetOnError(gc, Procs.OnErrorCont, Procs.OnErrorHitRestart);
     Procs.Enable(gc);
     ASSERT(res = Procs.OK)
-  END Install;
+  END Init;
 
-  PROCEDURE Recover*;
-  BEGIN
-    Install
-  END Recover;
 
+BEGIN
+  NEW(gc); ASSERT(gc # NIL)
 END GC.
