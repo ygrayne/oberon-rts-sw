@@ -1,7 +1,7 @@
 (**
   Device IO addresses
   --
-  Platform: p4-eth-arty-a7-100
+  Platform: ANY
   --
   (c) 2023 Gray gray@grayraven.org
   https://oberon-rts.org/licences
@@ -11,6 +11,11 @@ MODULE DevAdr;
 
   CONST
     (* note: the LSB address is fixed at -60 by the compiler *)
+
+    (* LSB -- leds, switches, buttons *)
+    (* one address *)
+    (* note: fixed in the compiler for LED procedures *)
+    LsbAdr* = -60;
 
     (* millisecond timer *)
     (* one address *)
@@ -30,14 +35,17 @@ MODULE DevAdr;
 
     (* system ctrl register *)
     (* two addresses *)
+    (* adapt BootLoad.mod if you change this *)
     SysCtrlRegAdr* = -72;
 
     (* watchdog *)
     (* one address *)
+    (* adapt BootLoad.mod if you change this *)
     WatchdogAdr* = -112;
 
     (* stack monitor *)
     (* four addresses *)
+    (* adapt BootLoad.mod if you change this *)
     StackMonAdr* = -96;
 
     (* RS232 devices *)
