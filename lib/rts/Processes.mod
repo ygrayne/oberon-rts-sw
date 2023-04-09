@@ -13,21 +13,42 @@
 
 MODULE Processes;
 
-  IMPORT SYSTEM, Kernel, Coroutines, ProcTimers := ProcTimersFixed, Watchdog, SysCtrl, DebugOut;
+  IMPORT SYSTEM, Kernel, Coroutines, ProcTimers := ProcTimersFixed, Watchdog, SysCtrl, Log;
 
   CONST
     MaxNumProcs* = 32;
     FirstProcNum = 1; (* 0 is reserved for the loop *)
+    ProcNums = {0 .. 31};
     NameLen* = 4;
     NumTimers* = 8;
-    OK* = 0;
-    Failed* = 1;
+
+    (* process timers in milliseconds *)
+    P0 = 5; P1 = 10; P2 = 20; P3 = 50; P4 = 100; P5 = 200; P6 = 500; P7 = 1000;
+
+    (* loop config *)
     LoopStackSize = 256;
     LoopStackHotSize = 32;
-    LoopId = 0;
-    TrigNone = 0;
+    loopPid = 0;
+
+    (* result codes *)
+    OK* = 0;
+    Failed* = 1;
+
+    (* process triggers, if any *)
+    TrigNone* = 0;
     TrigSome = 1;
-    P0 = 5; P1 = 10; P2 = 20; P3 = 50; P4 = 100; P5 = 200; P6 = 500; P7 = 1000;
+
+    (* process states *)
+    StateEnabled* = 0;    (* triggered: will be queued at next trigger event; non-triggered: will be run from queue asap *)
+    StateSuspended* = 1;  (* must be (re-) enabled before it can run *)
+
+    (* process handling on errors *)
+    (* if another process has caused the error or was hit by the error *)
+    OnErrorCont* = 0;     (* continue process from state at error occurence *)
+    OnErrorReset* = 1;    (* reset process *)
+    (* if this process has caused the error or was hit by the error *)
+    OnErrorHitDefault* = 0;  (* normal error handling *)
+    OnErrorHitRestart* = 1;  (* mandatory restart of the the system *)
 
   TYPE
     PROC* = PROCEDURE;
@@ -36,8 +57,10 @@ MODULE Processes;
     ProcessDesc* = RECORD
       proc: PROC;
       prio, pid: INTEGER;
+      state: INTEGER;
       period: INTEGER;
       trigger: INTEGER;
+      onError, onErrorHit: INTEGER;
       watchdog: BOOLEAN;
       name: ProcName;
       cor: Coroutines.Coroutine;
@@ -58,6 +81,7 @@ MODULE Processes;
     queued: SET;
     loop: Coroutines.Coroutine;
     LoopStackTop*, LoopStackBottom*: INTEGER;
+    le: Log.Entry;
 
 
   (* manage the ready queue *)
@@ -89,14 +113,17 @@ MODULE Processes;
 
   (* process creation and queue mgmt *)
 
-  PROCEDURE Init*(p: Process; proc: PROC; stAdr, stSize, stHotSize, prio: INTEGER; VAR pid, res: INTEGER);
+  PROCEDURE Init*(p: Process; proc: PROC; stAdr, stSize, stHotSize: INTEGER; VAR pid, res: INTEGER);
     VAR i: INTEGER;
   BEGIN
     ASSERT(p # NIL);
     p.proc := proc;
-    p.prio := prio;
+    p.prio := 0;
     p.period := 0;
+    p.onError := OnErrorReset;
+    p.onErrorHit := OnErrorHitDefault;
     p.trigger := TrigNone;
+    p.state := StateSuspended;
     p.watchdog := TRUE;
     p.name := "";
     IF NumProcs < MaxNumProcs THEN
@@ -107,29 +134,151 @@ MODULE Processes;
       procs[i] := p;
       NEW(p.cor); ASSERT(p.cor # NIL);
       Coroutines.Init(p.cor, p.proc, stAdr, stSize, stHotSize, p.pid);
-      ProcTimers.Disable(p.pid);
+      ProcTimers.Disable(i);
       res := OK
     ELSE
       res := Failed
-    END
+    END;
+    (* logging *)
+    le.event := Log.Process;
+    le.cause := Log.ProcNew;
+    le.more0 := p.pid;
+    le.more1 := res;
+    Log.Put(le)
   END Init;
 
-  PROCEDURE New*(p: Process; proc: PROC; stack: ARRAY OF BYTE; stHotSize, prio: INTEGER; VAR pid, res: INTEGER);
+  PROCEDURE New*(p: Process; proc: PROC; stack: ARRAY OF BYTE; stHotSize: INTEGER; VAR pid, res: INTEGER);
   BEGIN
-    Init(p, proc, SYSTEM.ADR(stack), LEN(stack), stHotSize, prio, pid, res)
+    Init(p, proc, SYSTEM.ADR(stack), LEN(stack), stHotSize, pid, res)
   END New;
+
 
   PROCEDURE Enable*(p: Process);
   BEGIN
-    slotIn(p);
-    INCL(queued, p.pid)
+    ASSERT(p # NIL);
+    p.state := StateEnabled;
+    IF p.trigger = TrigNone THEN (* else wait for trigger *)
+      slotIn(p);
+      INCL(queued, p.pid)
+    END;
+    (* logging *)
+    le.event := Log.Process;
+    le.cause := Log.ProcEnable;
+    le.name := p.name;
+    le.more0 := p.pid;
+    le.more1 := p.trigger;
+    le.more2 := p.period;
+    Log.Put(le)
   END Enable;
 
-  PROCEDURE Disable*(p: Process);
+
+  PROCEDURE Suspend*(p: Process);
   BEGIN
+    ASSERT(p # NIL);
+    p.state := StateSuspended;
     slotOut(p);
     EXCL(queued, p.pid)
-  END Disable;
+  END Suspend;
+
+
+  PROCEDURE Reset*(p: Process);
+  BEGIN
+    ASSERT(p # NIL);
+    (* logging *)
+    le.event := Log.Process;
+    le.cause := Log.ProcReset;
+    le.name := p.name;
+    le.more0 := p.pid;
+    Log.Put(le);
+
+    Coroutines.Reset(p.cor)
+  END Reset;
+
+
+  PROCEDURE OnError*(pid: INTEGER);
+    VAR i: INTEGER; p0: Process;
+  BEGIN
+    i := 1;
+    WHILE i < MaxNumProcs DO
+      IF procs[i] # NIL THEN
+        p0 := procs[i];
+        IF i = pid THEN (* the error-inducing or error-interrupted process *)
+          Reset(p0);
+          Enable(p0)
+        ELSE
+          IF p0.onError = OnErrorReset THEN
+            Reset(p0);
+            Enable(p0)
+          ELSIF p0.onError = OnErrorCont THEN
+            Enable(p0)
+          END
+        END
+      END;
+      INC(i)
+    END
+  END OnError;
+
+
+  (* manage processes *)
+
+  PROCEDURE SetPrio*(p: Process; prio: INTEGER);
+  BEGIN
+    ASSERT(p # NIL);
+    p.prio := prio
+  END SetPrio;
+
+
+  PROCEDURE SetPeriod*(p: Process; period: INTEGER);
+  BEGIN
+    ASSERT(p # NIL);
+    p.period := period;
+    p.trigger := TrigSome;
+    ProcTimers.SetPeriod(p.pid, period) (* also enables timer *)
+  END SetPeriod;
+
+
+  PROCEDURE SetName*(p: Process; name: ARRAY OF CHAR);
+  BEGIN
+    ASSERT(p # NIL);
+    p.name := name
+  END SetName;
+
+
+  PROCEDURE GetName*(pid: INTEGER; VAR name: ProcName);
+  BEGIN
+    ASSERT(pid IN ProcNums);
+    ASSERT(procs[pid] # NIL);
+    name := procs[pid].name
+  END GetName;
+
+
+  PROCEDURE SetNoWatchdog*(p: Process);
+  BEGIN
+    ASSERT(p # NIL);
+    p.watchdog := FALSE
+  END SetNoWatchdog;
+
+
+  PROCEDURE SetOnError*(p: Process; onErr, onErrHit: INTEGER);
+  BEGIN
+    ASSERT(p # NIL);
+    p.onError := onErr;
+    p.onErrorHit := onErrHit
+  END SetOnError;
+
+
+  PROCEDURE ForceRestart*(pid: INTEGER): BOOLEAN;
+    VAR force: BOOLEAN;
+  BEGIN
+    ASSERT(pid IN ProcNums);
+    force := FALSE;
+    IF pid > 0 THEN
+      ASSERT(procs[pid] # NIL);
+      force := procs[pid].onErrorHit = OnErrorHitRestart
+    END;
+    RETURN force
+  END ForceRestart;
+
 
   (* in-process api *)
 
@@ -146,47 +295,26 @@ MODULE Processes;
   END Next;
 
 
-  PROCEDURE SetPeriod*(period: INTEGER);
+  PROCEDURE SuspendMe*;
   BEGIN
-    Cp.period := period;
-    Cp.trigger := TrigSome;
-    ProcTimers.SetPeriod(Cp.pid, period) (* also enables timer *)
-  END SetPeriod;
+    Cp.state := StateSuspended;
+    slotOut(Cp);
+    EXCL(queued, Cp.pid);
+    Coroutines.Transfer(Cp.cor, loop)
+  END SuspendMe;
 
 
-  PROCEDURE SetName*(name: ARRAY OF CHAR);
+  PROCEDURE GetStatus*(VAR errNo, errPid: INTEGER);
+    VAR addr: INTEGER;
   BEGIN
-    Cp.name := name
-  END SetName;
+    SysCtrl.GetError(errNo, addr);
+    SysCtrl.GetErrPid(errPid)
+  END GetStatus;
 
-
-  PROCEDURE SetNoWatchdog*;
-  BEGIN
-    Cp.watchdog := FALSE
-  END SetNoWatchdog;
-
-
-  (* manage processes *)
-
-  PROCEDURE GetName*(pid: INTEGER; VAR name: ProcName);
-  BEGIN
-    name := procs[pid].name
-  END GetName;
 
   (* loop/scanner coroutine code *)
   (* scan for hw signals to schedule processes *)
-(*
-  PROCEDURE printQ;
-    VAR p0: Process;
-  BEGIN
-    p0 := cp;
-    WHILE p0 # NIL DO
-      DebugOut.WriteLine("q ", p0.name, "", -1);
-      p0 := p0.next
-    END;
-    DebugOut.WriteLine("---", "", "", -1)
-  END printQ;
-*)
+  (* is also the "idle process" *)
 
   PROCEDURE loopc;
     VAR pid: INTEGER; readyT: SET;
@@ -200,12 +328,12 @@ MODULE Processes;
         pid := 0;
         WHILE pid < MaxNumProcs DO
           IF pid IN readyT THEN
-            (*printQ;*)
-            ASSERT(procs[pid].trigger = TrigSome);
-            slotIn(procs[pid]);
-            INCL(queued, pid);
-            ProcTimers.ClearReady(pid);
-            (*printQ*)
+            IF procs[pid].state = StateEnabled THEN
+              ASSERT(procs[pid].trigger = TrigSome);
+              slotIn(procs[pid]);
+              INCL(queued, pid);
+              ProcTimers.ClearReady(pid)
+            END
           END;
           INC(pid)
         END
@@ -231,7 +359,7 @@ MODULE Processes;
     LED(0F6H);
     SYSTEM.LDREG(SP, LoopStackTop - 128);
     NEW(jump);
-    Coroutines.Init(loop, loopc, LoopStackBottom, LoopStackSize, LoopStackHotSize, LoopId);
+    Coroutines.Init(loop, loopc, LoopStackBottom, LoopStackSize, LoopStackHotSize, loopPid);
     LED(0F7H);
     Coroutines.Transfer(jump, loop)
   END Go;
@@ -275,9 +403,9 @@ MODULE Processes;
     td[4] := P4; td[5] := P5; td[6] := P6; td[7] := P7
   END GetTimerData;
 
-  (* module initialisation *)
+  (* module initialisation and recovery *)
 
-  PROCEDURE initM;
+  PROCEDURE Install*;
     VAR i: INTEGER;
   BEGIN
     i := 0;
@@ -290,8 +418,14 @@ MODULE Processes;
     LoopStackTop := Kernel.stackOrg;
     LoopStackBottom := LoopStackTop - LoopStackSize;
     NEW(loop);
-  END initM;
+  END Install;
 
-BEGIN
-  initM
+  PROCEDURE Recover*;
+  (* note: Process.Go will init the loop *)
+  BEGIN
+    cp := NIL; Cp := NIL;
+    queued := {};
+    ProcTimers.Init(P0, P1, P2, P3, P4, P5, P6, P7)
+  END Recover;
+
 END Processes.

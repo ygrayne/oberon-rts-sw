@@ -9,59 +9,61 @@
 
 MODULE Audit;
 
-  IMPORT Procs := Processes, SysCtrl, Log;
+  IMPORT Procs := Processes, SysCtrl, Log, LSB;
 
   CONST
-    AuditPeriod = 7;
-    AuditPrio = 0;
-    AuditPrId = "adt";
-    AuditStackHotSize = 0;
-    AuditCount = 5; (* times AuditPeriod *)
+    Period = 7;
+    Prio = 0;
+    Name = "adt";
+    StackHotSize = 0;
+    Count = 5; (* times Period *)
 
   VAR
     audit: Procs.Process;
-    auditStack: ARRAY 256 OF BYTE;
-    auditCnt: INTEGER;
+    stack: ARRAY 256 OF BYTE;
     le: Log.Entry;
-    auditPid: INTEGER;
+    pid: INTEGER;
 
 
   PROCEDURE auditc;
-    VAR logged: BOOLEAN; addr: INTEGER;
+    VAR logged, ledr: BOOLEAN; auditCnt: INTEGER;
   BEGIN
     logged := FALSE;
-    auditCnt := AuditCount;
-    Procs.SetPeriod(AuditPeriod);
-    Procs.SetName(AuditPrId);
+    auditCnt := Count;
+    ledr := FALSE;
     REPEAT
       Procs.Next;
       DEC(auditCnt);
       IF auditCnt = 0 THEN
         IF ~logged THEN
-          SysCtrl.SetError(0, 0, 0);
+          SysCtrl.SetError(0, 0);
+          SysCtrl.SetErrPid(0);
           le.event := Log.System; le.cause := Log.SysOK;
           SysCtrl.GetReg(le.more0);
           Log.Put(le);
           logged := TRUE
         END;
-        auditCnt := AuditCount
+        auditCnt := Count;
+        ledr := ~ledr;
+        IF ledr THEN LSB.SetRedLedsOn({1}) ELSE LSB.SetRedLedsOff({1}) END
       END
     UNTIL FALSE
   END auditc;
 
 
-  PROCEDURE Install*;
+  PROCEDURE Init*;
     VAR res: INTEGER;
   BEGIN
-    NEW(audit);
-    Procs.New(audit, auditc, auditStack, AuditStackHotSize, AuditPrio, auditPid, res);
+    Procs.New(audit, auditc, stack, StackHotSize, pid, res);
+    Procs.SetPrio(audit, Prio);
+    Procs.SetPeriod(audit, Period); (* enables timer *)
+    Procs.SetName(audit, Name);
+    Procs.SetOnError(audit, Procs.OnErrorReset, Procs.OnErrorHitDefault);
     Procs.Enable(audit);
     ASSERT(res = Procs.OK)
-  END Install;
+  END Init;
 
 
-  PROCEDURE Recover*;
-  BEGIN
-  END Recover;
-
+BEGIN
+  NEW(audit); ASSERT(audit # NIL)
 END Audit.

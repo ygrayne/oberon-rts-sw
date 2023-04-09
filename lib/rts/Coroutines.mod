@@ -16,18 +16,21 @@ MODULE Coroutines;
     CoroutineDesc* = RECORD
       sp: INTEGER; (* stored stack pointer when transferring *)
       id*: INTEGER; (* coroutine id *)
+      proc: INTEGER;
       stAdr*, stSize*, stHotLimit*, stMin*: INTEGER (* only exported for reporting/debugging reasons *)
     END;
 
 
-  PROCEDURE Init*(cor: Coroutine; code: PROCEDURE; stAdr, stSize, stHotSize: INTEGER; id: INTEGER);
+  PROCEDURE Init*(cor: Coroutine; proc: PROCEDURE; stAdr, stSize, stHotSize: INTEGER; id: INTEGER);
   BEGIN
+    ASSERT(cor # NIL);
     (* set the params for the stack monitor, see Transfer *)
     cor.stAdr := stAdr;
     cor.stHotLimit := stAdr + stHotSize;
     cor.stSize := stSize;
     cor.stMin := stAdr + stSize;
     cor.id := id;
+    cor.proc := SYSTEM.VAL(INTEGER, proc);
 
     (* set up the stack for the initial transfer *)
     cor.sp := stAdr + stSize;
@@ -38,7 +41,7 @@ MODULE Coroutines;
     (* put the code address at the starting SP address *)
     (* this corresponds to the LNK value on the stack *)
     DEC(cor.sp, 4);
-    SYSTEM.PUT(cor.sp, SYSTEM.VAL(INTEGER, code));
+    SYSTEM.PUT(cor.sp, cor.proc);
     (* now cor.sp is 3 * 4-byte addresses "down" from the top of the stack *)
     (* hence the initial Transfer's epilogue works *)
     (***
@@ -47,8 +50,21 @@ MODULE Coroutines;
   END Init;
 
 
+  PROCEDURE Reset*(cor: Coroutine);
+  BEGIN
+    ASSERT(cor # NIL);
+    cor.sp := cor.stAdr + cor.stSize;
+    DEC(cor.sp, 8);
+    SYSTEM.PUT(cor.sp, SYSTEM.VAL(INTEGER, cor));
+    DEC(cor.sp, 4);
+    SYSTEM.PUT(cor.sp, cor.proc)
+  END Reset;
+
+
   PROCEDURE Transfer*(f, t: Coroutine);
   BEGIN
+    ASSERT(f # NIL);
+    ASSERT(t # NIL);
     (* enter "as" f, f's stack in use *)
     (* prologue: push caller's LNK and parameters 'f' and 't' onto f's stack *)
 

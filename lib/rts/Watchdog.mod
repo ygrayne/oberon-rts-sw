@@ -13,8 +13,8 @@ MODULE Watchdog;
   IMPORT SYSTEM, DevAdr;
 
   CONST
-    Adr = DevAdr.WatchdogAdr;
-    Timeout = 100;
+    IOadr = DevAdr.WatchdogAdr;
+    Timeout = 500;
     IsEnabled = TRUE;
 
   VAR
@@ -22,20 +22,20 @@ MODULE Watchdog;
 
   PROCEDURE Reset*;
   BEGIN
-    SYSTEM.PUT(Adr, timeout)
+    SYSTEM.PUT(IOadr, timeout)
   END Reset;
 
 
   PROCEDURE* SetTimeout*(to: INTEGER);
   BEGIN
     timeout := to;
-    SYSTEM.PUT(Adr, timeout)
+    SYSTEM.PUT(IOadr, timeout)
   END SetTimeout;
 
 
   PROCEDURE* Stop*;
   BEGIN
-    SYSTEM.PUT(Adr, 0)
+    SYSTEM.PUT(IOadr, 0)
   END Stop;
 
 
