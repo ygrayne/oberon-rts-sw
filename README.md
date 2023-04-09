@@ -11,6 +11,8 @@ Here is the sister repo for the corresponding hardware: [oberon-rts-hw](https://
 
 ## Current Status
 
+* 2023-04-09: Restarted the Process module from the ground up, simpler for now, but well integrated with the error handling concept, which works now apart from repeated reset and restart protection.
+
 * 2023-04-05: (re-) implemented the watchdog and the stack overflow monitor. Unified error signals from the hardware with the trap handling. The errors result in a reset and reload of the system for now, which is one possible corrective measure, but a more subtle way, where the (some) processes recover and can continue will be added. Need to rethink the processes first. Good thing is that the logging of all errors is back.
 
 * 2023-03-30: Added FPGA-based logging facility.
@@ -20,7 +22,7 @@ Here is the sister repo for the corresponding hardware: [oberon-rts-hw](https://
 
 ## Next Up
 
-* Rethink processes and scheduling. Needs an overhaul, and possibly some simplification.
+* Finally integrate the RTC on the DE2-115 board.
 
 
 ## Architectures
@@ -50,8 +52,9 @@ Getting slowly better, though. :)
 
 * oberon-rts-sw
   * lib
-    * rts: the modules for Oberon RTS that are independent of the platform
+    * any: the modules for Oberon RTS that are independent of the platform
     * platform: the platform-dependent ones
+    * board: the board-dependent ones
   * system: a directory per system, usually only a module that builds the whole system
     * s1-rts: currently building the minimal system
   * orig

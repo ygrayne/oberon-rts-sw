@@ -1,5 +1,9 @@
 # Oberon RTS Library
 
-* rts: all Oberon modules that are not platform specific.
+* any: all Oberon modules that are not platform specific.
 
-* platform: platform specific stuff. For now, there's only one platform directory here for P4, as P3 uses the same modules. The two platforms are "SD card swap" compatible as of now.
+* platform: platform specific stuff
+  * any: modules that work on either platform, kept here in lieu of the general 'any' directory as these are the candidates for specialisation.
+
+* board: board specific stuff
+  * any: modules that sort of work for all boards, with some limitations, but not stopping the software from functioning, such as missing LEDs. Allows for compiling for both platforms and keeping the "SD card swappability" for now.
