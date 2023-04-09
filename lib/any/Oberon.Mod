@@ -59,7 +59,7 @@ MODULE Oberon;
       le.event := Log.System;
     END;
     IF RTC.Installed THEN
-      le.cause := Log.SysRTCinst; le.more0 := RTCspiDevice; le.more1 := RTCchipselect
+      le.event := Log.System; le.cause := Log.SysRTCinst; le.more0 := RTCspiDevice; le.more1 := RTCchipselect
     ELSE
       le.event := Log.System; le.cause := Log.SysRTCnotinst
     END;
@@ -86,9 +86,9 @@ BEGIN
   (* running with SP down from stackOrg *)
   LED(0F1H);
   Par := Cmds.Par; Call := Cmds.Call; (* EPO command handling compatibility *)
-  (***
+
   RTC.Install(RTCspiDevice, RTCchipselect); (* nice for logging *)
-  *)
+
   LED(0F2H);
   logRestart;
   logMemData;
