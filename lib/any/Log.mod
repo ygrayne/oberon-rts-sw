@@ -114,7 +114,6 @@ MODULE Log;
 
   PROCEDURE Put*(VAR e: Entry);
   BEGIN
-
     getIndices(putix, getix);
     IF RTC.Installed THEN
       e.when := RTC.Clock()
