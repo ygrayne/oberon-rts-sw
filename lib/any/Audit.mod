@@ -34,6 +34,9 @@ MODULE Audit;
     REPEAT
       Procs.Next;
       DEC(auditCnt);
+      LSB.DisplayNum2Left(10, Procs.NumProcs);
+      LSB.DisplayNum2Right(10, auditCnt);
+      LSB.DisplayNum4(16, 06F12H);
       IF auditCnt = 0 THEN
         IF ~logged THEN
           SysCtrl.SetError(0, 0);
