@@ -10,8 +10,6 @@
 MODULE DevAdr;
 
   CONST
-    (* note: the LSB address is fixed at -60 by the compiler *)
-
     (* LSB -- leds, switches, buttons *)
     (* one address *)
     (* note: fixed in the compiler for LED procedures *)
@@ -24,6 +22,10 @@ MODULE DevAdr;
     (* logs *)
     (* two addresses *)
     LogDataAdr* = -224;
+
+    (* calltrace *)
+    (* two addresses *)
+    CalltraceDataAdr* = -80;
 
     (* process periodic timing *)
     (* one address *)

@@ -95,7 +95,8 @@ MODULE Processes;
         p1 := p0; p0 := p0.next
       END;
       IF p1 = p0 THEN cp := p ELSE  p1.next := p END;
-      p.next := p0
+      p.next := p0;
+      INCL(queued, p.pid)
     ELSE
       (* overflow *)
     END
@@ -107,7 +108,8 @@ MODULE Processes;
     IF p.pid IN queued THEN
       p0 := cp; p1 := p0;
       WHILE (p0 # NIL) & (p0 # p) DO p1 := p0; p0 := p0.next END;
-      IF p0 = p1 THEN cp := p.next ELSE p1.next := p.next END
+      IF p0 = p1 THEN cp := p.next ELSE p1.next := p.next END;
+      EXCL(queued, p.pid)
     END
   END slotOut;
 
@@ -158,8 +160,7 @@ MODULE Processes;
     ASSERT(p # NIL);
     p.state := StateEnabled;
     IF p.trigger = TrigNone THEN (* else wait for trigger *)
-      slotIn(p);
-      INCL(queued, p.pid)
+      slotIn(p)
     END;
     (* logging *)
     le.event := Log.Process;
@@ -176,22 +177,20 @@ MODULE Processes;
   BEGIN
     ASSERT(p # NIL);
     p.state := StateSuspended;
-    slotOut(p);
-    EXCL(queued, p.pid)
+    slotOut(p)
   END Suspend;
 
 
   PROCEDURE Reset*(p: Process);
   BEGIN
     ASSERT(p # NIL);
+    Coroutines.Reset(p.cor);
     (* logging *)
     le.event := Log.Process;
     le.cause := Log.ProcReset;
     le.name := p.name;
     le.more0 := p.pid;
-    Log.Put(le);
-
-    Coroutines.Reset(p.cor)
+    Log.Put(le)
   END Reset;
 
 
@@ -285,11 +284,9 @@ MODULE Processes;
   PROCEDURE Next*;
   BEGIN
     IF Cp.trigger = TrigNone THEN
-      slotIn(Cp);
-      INCL(queued, Cp.pid)
+      slotIn(Cp)
     ELSE
-      slotOut(Cp);
-      EXCL(queued, Cp.pid)
+      slotOut(Cp)
     END;
     Coroutines.Transfer(Cp.cor, loop)
   END Next;
@@ -299,7 +296,6 @@ MODULE Processes;
   BEGIN
     Cp.state := StateSuspended;
     slotOut(Cp);
-    EXCL(queued, Cp.pid);
     Coroutines.Transfer(Cp.cor, loop)
   END SuspendMe;
 
@@ -331,7 +327,6 @@ MODULE Processes;
             IF procs[pid].state = StateEnabled THEN
               ASSERT(procs[pid].trigger = TrigSome);
               slotIn(procs[pid]);
-              INCL(queued, pid);
               ProcTimers.ClearReady(pid)
             END
           END;
@@ -421,7 +416,7 @@ MODULE Processes;
   END Install;
 
   PROCEDURE Recover*;
-  (* note: Process.Go will init the loop *)
+  (* note: Processes.Go will re-init the loop *)
   BEGIN
     cp := NIL; Cp := NIL;
     queued := {};

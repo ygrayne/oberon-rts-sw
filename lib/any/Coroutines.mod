@@ -7,7 +7,7 @@
 
 MODULE Coroutines;
 
-  IMPORT SYSTEM, StackMonitor;
+  IMPORT SYSTEM, StackMonitor, Calltrace;
 
   CONST SP = 14;
 
@@ -44,9 +44,7 @@ MODULE Coroutines;
     SYSTEM.PUT(cor.sp, cor.proc);
     (* now cor.sp is 3 * 4-byte addresses "down" from the top of the stack *)
     (* hence the initial Transfer's epilogue works *)
-    (***
-    Calltrace.Clear(id)
-    *)
+    Calltrace.Clear(cor.id)
   END Init;
 
 
@@ -57,7 +55,8 @@ MODULE Coroutines;
     DEC(cor.sp, 8);
     SYSTEM.PUT(cor.sp, SYSTEM.VAL(INTEGER, cor));
     DEC(cor.sp, 4);
-    SYSTEM.PUT(cor.sp, cor.proc)
+    SYSTEM.PUT(cor.sp, cor.proc);
+    Calltrace.Clear(cor.id)
   END Reset;
 
 
@@ -83,9 +82,9 @@ MODULE Coroutines;
     (* in this stack, parameter 't' is at SP + 4, set either initially by Reset, or *)
     (* by the the last transfer away from t -- when the parameter was actually 'f' *)
     (* hence we access 't' using 'f' here, so the compiler accesses 't' at 'SP + 4' *)
-    (***
+
     Calltrace.Select(f.id);
-    *)
+
     StackMonitor.Arm(f.id, f.stAdr, f.stHotLimit, f.stMin)
 
     (* epilogue: retrieve LNK from stack, adjust stack by +12 *)

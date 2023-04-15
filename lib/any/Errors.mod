@@ -91,6 +91,7 @@ MODULE Errors;
   NOT hardware reset, ie. values are still set in the hardware, as per the hw design:
   * enable and ticker assigments of process timers
   * error register and parts of the system control and status register
+  * calltrace stacks
 
   The bootloader:
   * allocates the stack in the memory area starting from Kernel.stackOrg down
