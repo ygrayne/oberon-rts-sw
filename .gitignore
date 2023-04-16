@@ -1,8 +1,8 @@
-
-*.code-workspace
-
 ## ignore all
 /*
+
+## really all
+*.*
 
 # add .gitgnore
 !.gitignore
@@ -11,18 +11,10 @@
 !/lib/
 !/orig/
 !/system/
+!/configs/
 
-/lib/epo/*
-/lib/rts/*/*
-/lib/platform/*/*
-/lib/gen/*
-/lib/system/*/*
-
-# add/exclude module files
+# add some files
+!/configs/*.ini
 !*.mod
-*.rsc
-*.smb
-*.lst
-*.bin
+!*.txt
 !*.md
-*.mem

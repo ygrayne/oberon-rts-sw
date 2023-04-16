@@ -11,6 +11,7 @@ MODULE Build;
     Oberon,
     System,
     LogView,
+    CalltraceView,
     BootFile,
     StartCfg;
 

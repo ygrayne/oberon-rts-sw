@@ -11,7 +11,7 @@
 MODULE Errors;
 
   IMPORT
-    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start;
+    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start, Calltrace, CalltraceView;
 
   CONST
     (* traps *)
@@ -67,16 +67,6 @@ MODULE Errors;
     END
   END addModuleInfo;
 
-
-  PROCEDURE addProcInfo(pid: INTEGER; VAR le: Log.Entry);
-  BEGIN
-    IF pid = 0 THEN (* loop/scanner *)
-      le.name := "---"
-    ELSE
-      Procs.GetName(pid, le.name)
-    END
-  END addProcInfo;
-
   (*
   Entry point after the bootloader if the system is not reloaded from disk.
   At this point, the system has been hardware-reset, nothing else.
@@ -91,6 +81,7 @@ MODULE Errors;
   NOT hardware reset, ie. values are still set in the hardware, as per the hw design:
   * enable and ticker assigments of process timers
   * error register and parts of the system control and status register
+  * calltrace stacks
 
   The bootloader:
   * allocates the stack in the memory area starting from Kernel.stackOrg down
@@ -99,7 +90,7 @@ MODULE Errors;
   *)
 
   PROCEDURE reset;
-    VAR errorNo, addr, pid, trapInstruction, abortNo, trapNo, trapPos: INTEGER;
+    VAR x, errorNo, addr, pid, trapInstruction, abortNo, trapNo, trapPos: INTEGER;
   BEGIN
     (* provided by trap handler (below), or by the hardware for aborts *)
     SysCtrl.GetError(errorNo, addr);
@@ -115,7 +106,7 @@ MODULE Errors;
       le.cause := abortNo;
       le.adr0 := addr;
       addModuleInfo(addr, le);
-      addProcInfo(pid, le);
+      Procs.GetName(pid, le.name);
       Log.Put(le)
     ELSE (* trap *)
       SYSTEM.GET(addr, trapInstruction);
@@ -126,13 +117,17 @@ MODULE Errors;
       le.adr0 := addr;
       le.more0 := trapPos;
       addModuleInfo(addr, le);
-      addProcInfo(pid, le);
-      Log.Put(le)
+      Procs.GetName(pid, le.name);
+      Log.Put(le);
+      Calltrace.Pop(x);
+      Calltrace.Pop(x);
+      Calltrace.Pop(x)
     END;
 
     (* error handling and logging *)
     IF ~handlingError THEN
       handlingError := TRUE;
+      CalltraceView.ShowTrace(0);
       IF (errorNo IN ForceRestart) OR Procs.ForceRestart(pid) THEN
         (* logging *)
         le.event := Log.System;
