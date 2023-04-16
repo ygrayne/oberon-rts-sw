@@ -1,6 +1,6 @@
 MODULE Calltrace;
 (**
-  Driver for the backtrace "shadow" stack.
+  Driver for the calltrace "shadow" stack.
   --
   There is one stack per process.
   --
@@ -21,9 +21,9 @@ MODULE Calltrace;
 
     CtrlDataShift = 8;
 
-    Empty = 0;
-    Full = 1;
-    Frozen = 2;
+    EmptyBit = 0;
+    FullBit = 1;
+    FrozenBit = 2;
     Count0 = 8;
     Count1 = 15;
     MaxCount0 = 16;
@@ -33,7 +33,7 @@ MODULE Calltrace;
 
     NumStacks = 32;
 
-  (* target stack 'stkNo' *)
+  (* target: stack 'stkNo' *)
 
   PROCEDURE Select*(stkNo: INTEGER);
   BEGIN
@@ -63,14 +63,7 @@ MODULE Calltrace;
   END Freeze;
 
 
-  PROCEDURE Unfreeze*(stkNo: INTEGER);
-  BEGIN
-    SYSTEM.PUT(StatusAdr, LSL(stkNo, CtrlDataShift) + UnfreezeCtrl);
-    SYSTEM.PUT(DataAdr, 0) (* push dummy value, will be hw-removed upon exiting this procedure *)
-  END Unfreeze;
-
-
-  (* target selected stack *)
+  (* target: selected stack *)
 
   PROCEDURE Pop*(VAR value: INTEGER);
     VAR x: INTEGER;
@@ -87,34 +80,75 @@ MODULE Calltrace;
     SYSTEM.GET(DataAdr, x);
     SYSTEM.PUT(DataAdr, value);
     SYSTEM.PUT(DataAdr, x)
-
   END Push;
 
-  (* use on frozen selected stack *)
+
+  PROCEDURE GetStatus*(VAR status: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(DataAdr, x);
+    SYSTEM.GET(StatusAdr, status);
+    SYSTEM.PUT(DataAdr, x)
+  END GetStatus;
+
+
+  PROCEDURE GetCount*(VAR count: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(DataAdr, x);
+    SYSTEM.GET(StatusAdr, count);
+    SYSTEM.PUT(DataAdr, x);
+    count := BFX(count, Count1, Count0)
+  END GetCount;
+
+
+  PROCEDURE GetMaxCount*(VAR count: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(DataAdr, x);
+    SYSTEM.GET(StatusAdr, count);
+    SYSTEM.PUT(DataAdr, x);
+    count := BFX(count, MaxCount1, MaxCount0)
+  END GetMaxCount;
+
+
+  PROCEDURE Frozen*(): BOOLEAN;
+    RETURN SYSTEM.BIT(StatusAdr, FrozenBit)
+  END Frozen;
+
+
+  PROCEDURE Empty*(): BOOLEAN;
+    VAR x: INTEGER; empty: BOOLEAN;
+  BEGIN
+    SYSTEM.GET(DataAdr, x);
+    empty := SYSTEM.BIT(StatusAdr, EmptyBit);
+    SYSTEM.PUT(DataAdr, x);
+    RETURN empty
+  END Empty;
+
+
+  PROCEDURE Full*(): BOOLEAN;
+    VAR x: INTEGER; full: BOOLEAN;
+  BEGIN
+    SYSTEM.GET(DataAdr, x);
+    full := SYSTEM.BIT(StatusAdr, FullBit);
+    SYSTEM.PUT(DataAdr, x);
+    RETURN full
+  END Full;
+
+  (* target: frozen stack *)
 
   PROCEDURE Read*(VAR value: INTEGER);
   BEGIN
     SYSTEM.GET(DataAdr, value)
   END Read;
 
-  PROCEDURE GetStatus*(VAR status: INTEGER);
+
+  PROCEDURE Unfreeze*(stkNo: INTEGER);
   BEGIN
-    SYSTEM.GET(StatusAdr, status)
-  END GetStatus;
-
-
-  PROCEDURE GetCount*(VAR count: INTEGER);
-  BEGIN
-    SYSTEM.GET(StatusAdr, count);
-    count := BFX(count, Count1, Count0)
-  END GetCount;
-
-
-  PROCEDURE GetMaxCount*(VAR count: INTEGER);
-  BEGIN
-    SYSTEM.GET(StatusAdr, count);
-    count := BFX(count, MaxCount1, MaxCount0)
-  END GetMaxCount;
+    SYSTEM.PUT(StatusAdr, LSL(stkNo, CtrlDataShift) + UnfreezeCtrl);
+    SYSTEM.PUT(DataAdr, 0) (* push dummy value, will be hw-popped upon exiting this procedure *)
+  END Unfreeze;
 
 END Calltrace.
 

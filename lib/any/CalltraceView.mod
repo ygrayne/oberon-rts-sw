@@ -47,8 +47,10 @@ MODULE CalltraceView;
     Calltrace.GetSelected(sel);
     Texts.WriteLn(W); Texts.WriteString(W, "call trace stack: "); Texts.WriteInt(W, sel, 0);
     Texts.WriteString(W, " id: "); Texts.WriteInt(W, id, 0); Texts.WriteLn(W);
-    Calltrace.Freeze(sel);
+    Texts.WriteString(W, "  module                "); Texts.WriteString(W, "    addr");
+    Texts.WriteString(W, "   m-addr"); Texts.WriteString(W, "    line"); Texts.WriteLn(W);
     Calltrace.GetCount(cnt);
+    Calltrace.Freeze(sel);
     i := 0;
     WHILE i < cnt DO
       Calltrace.Read(x);
@@ -57,9 +59,9 @@ MODULE CalltraceView;
       writeTraceLine(x);
       Texts.WriteLn(W)
     END;
+    Calltrace.Unfreeze(sel);
     Calltrace.GetMaxCount(cnt);
-    Texts.WriteString(W, "max depth: "); Texts.WriteInt(W, cnt, 0); Texts.WriteLn(W);
-    Calltrace.Unfreeze(sel)
+    Texts.WriteString(W, "max depth: "); Texts.WriteInt(W, cnt, 0); Texts.WriteLn(W)
   END ShowTrace;
 
 
