@@ -343,9 +343,9 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
     Texts.WriteString(W, "  used");
     Texts.WriteString(W, "  unused");
     Texts.WriteLn(W);
-    pid := 0;
+    pid := -1;
     Procs.GetProcData(pd, pid);
-    WHILE pid # 0 DO
+    WHILE pid # -1 DO
       Texts.WriteString(W, "  ");
       Texts.WriteString(W, pd.name);
       j := 0; WHILE pd.name[j] # 0X DO INC(j) END;
@@ -366,15 +366,6 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
       Texts.WriteLn(W);
       Procs.GetProcData(pd, pid)
     END;
-
-    Procs.GetLoopData(pd);
-    Texts.WriteString(W, "  scanner              ");
-    Texts.WriteHex(W, pd.stAdr);
-    Texts.WriteInt(W, pd.stSize, 8);
-    Texts.WriteInt(W, pd.stHotSize, 6);
-    Texts.WriteInt(W, pd.stAdr + pd.stSize - pd.stMin, 6);
-    Texts.WriteInt(W, pd.stMin - pd.stAdr, 8);
-    Texts.WriteLn(W); Texts.WriteLn(W);
 
     Procs.GetTimerData(td);
     Texts.WriteString(W, "  timers: ");

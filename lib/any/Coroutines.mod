@@ -21,19 +21,11 @@ MODULE Coroutines;
     END;
 
 
-  PROCEDURE Init*(cor: Coroutine; proc: PROCEDURE; stAdr, stSize, stHotSize: INTEGER; id: INTEGER);
+  PROCEDURE Reset*(cor: Coroutine);
   BEGIN
     ASSERT(cor # NIL);
-    (* set the params for the stack monitor, see Transfer *)
-    cor.stAdr := stAdr;
-    cor.stHotLimit := stAdr + stHotSize;
-    cor.stSize := stSize;
-    cor.stMin := stAdr + stSize;
-    cor.id := id;
-    cor.proc := SYSTEM.VAL(INTEGER, proc);
-
     (* set up the stack for the initial transfer *)
-    cor.sp := stAdr + stSize;
+    cor.sp := cor.stAdr + cor.stSize;
     (* place 'cor' for the initial transfer to this coroutine, at SP + 4 with SP pointing to LNK, seet below *)
     DEC(cor.sp, 8);
     SYSTEM.PUT(cor.sp, SYSTEM.VAL(INTEGER, cor));
@@ -45,19 +37,20 @@ MODULE Coroutines;
     (* now cor.sp is 3 * 4-byte addresses "down" from the top of the stack *)
     (* hence the initial Transfer's epilogue works *)
     Calltrace.Clear(cor.id)
-  END Init;
+  END Reset;
 
 
-  PROCEDURE Reset*(cor: Coroutine);
+  PROCEDURE Init*(cor: Coroutine; proc: PROCEDURE; stAdr, stSize, stHotSize: INTEGER; id: INTEGER);
   BEGIN
     ASSERT(cor # NIL);
-    cor.sp := cor.stAdr + cor.stSize;
-    DEC(cor.sp, 8);
-    SYSTEM.PUT(cor.sp, SYSTEM.VAL(INTEGER, cor));
-    DEC(cor.sp, 4);
-    SYSTEM.PUT(cor.sp, cor.proc);
-    Calltrace.Clear(cor.id)
-  END Reset;
+    cor.stAdr := stAdr;
+    cor.stHotLimit := stAdr + stHotSize;
+    cor.stSize := stSize;
+    cor.stMin := stAdr + stSize;
+    cor.id := id;
+    cor.proc := SYSTEM.VAL(INTEGER, proc);
+    Reset(cor)
+  END Init;
 
 
   PROCEDURE Transfer*(f, t: Coroutine);
@@ -80,11 +73,9 @@ MODULE Coroutines;
 
     (* set calltrace stack and arm stack overflow monitor *)
     (* in this stack, parameter 't' is at SP + 4, set either initially by Reset, or *)
-    (* by the the last transfer away from t -- when the parameter was actually 'f' *)
+    (* by the the last transfer away from 't' -- when the parameter was actually 'f' *)
     (* hence we access 't' using 'f' here, so the compiler accesses 't' at 'SP + 4' *)
-
     Calltrace.Select(f.id);
-
     StackMonitor.Arm(f.id, f.stAdr, f.stHotLimit, f.stMin)
 
     (* epilogue: retrieve LNK from stack, adjust stack by +12 *)

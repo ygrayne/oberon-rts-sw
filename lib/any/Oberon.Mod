@@ -18,6 +18,10 @@ MODULE Oberon;
   CONST
     SP = 14;
 
+    LoopStackSize = 512;
+    LoopStackHotSize = 32;
+    CmdsStackHotSize = 512;
+
     (* RTC connection *)
     RTCspiDevice = SPIdev.Dev0; (* unbuffered, shared with SD card *)
     RTCchipselect = 1;
@@ -26,6 +30,7 @@ MODULE Oberon;
     (* EO compatibility, eg. as used by System *)
     Par*: Cmds.ParRef;
     Call*: PROCEDURE(name: ARRAY OF CHAR; VAR res: INTEGER);
+    stackSize, stackAddr, stackHotSize: INTEGER;
 
 
   PROCEDURE Clock*(): INTEGER;
@@ -92,21 +97,31 @@ BEGIN
   LED(0F2H);
   logRestart;
   logMemData;
-  Procs.Install;
-  Errors.Init;
+
+  (* loop/scanner will use the top part of the original stack area *)
+  (* LoopStackSize bytes *)
+  stackAddr := Kernel.stackOrg - LoopStackSize;
+  Procs.Install(stackAddr, LoopStackSize, LoopStackHotSize);
   LED(0F3H);
-  GC.Init;
+
+  Errors.Init;
   LED(0F4H);
-  Audit.Init;
+
+  GC.Init;
   LED(0F5H);
-  Cmds.Init;
+
+  Audit.Init;
   LED(0F6H);
 
-  (* from here, cmds will use most of the original stack, the scanner (loop) only keeps a small part
-  at the top, see Procs.LoopStackSize *)
-
-  GC.Collect; (* make sure we have all heap space available for startup loading by Cmds *)
+  (* Cmds will use the part of the original stack below the loop *)
+  stackAddr := Kernel.stackOrg - Kernel.stackSize;
+  stackSize := Kernel.stackOrg - LoopStackSize - stackAddr;
+  Cmds.Init(stackAddr, stackSize, CmdsStackHotSize);
   LED(0F7H);
+
+  (* this runs still in the original stack *)
+  GC.Collect; (* make sure we have all heap space available for startup loading by Cmds *)
+  LED(0F8H);
   Procs.Go; (* start loop/scanner *)
   (* we'll not return here *)
 END Oberon.

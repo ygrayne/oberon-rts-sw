@@ -13,22 +13,16 @@
 
 MODULE Processes;
 
-  IMPORT SYSTEM, Kernel, Coroutines, ProcTimers := ProcTimersFixed, Watchdog, SysCtrl, Log;
+  IMPORT SYSTEM, Coroutines, ProcTimers := ProcTimersFixed, Watchdog, SysCtrl, Log;
 
   CONST
     MaxNumProcs* = 32;
-    FirstProcNum = 1; (* 0 is reserved for the loop *)
     ProcNums = {0 .. 31};
     NameLen* = 4;
     NumTimers* = 8;
 
     (* process timers in milliseconds *)
     P0 = 5; P1 = 10; P2 = 20; P3 = 50; P4 = 100; P5 = 200; P6 = 500; P7 = 1000;
-
-    (* loop config *)
-    LoopStackSize = 256;
-    LoopStackHotSize = 32;
-    loopPid = 0;
 
     (* result codes *)
     OK* = 0;
@@ -79,8 +73,9 @@ MODULE Processes;
     NumProcs*: INTEGER;
     Cp*, cp: Process;
     queued: SET;
-    loop: Coroutines.Coroutine;
-    LoopStackTop*, LoopStackBottom*: INTEGER;
+    loop: Process;
+    loopPid : INTEGER;
+    loopStackTop, loopStackAddr, loopStackSize, loopStackHotSize: INTEGER;
     le: Log.Entry;
 
 
@@ -120,7 +115,7 @@ MODULE Processes;
   BEGIN
     ASSERT(p # NIL);
     p.proc := proc;
-    p.prio := 0;
+    p.prio := 1;
     p.period := 0;
     p.onError := OnErrorReset;
     p.onErrorHit := OnErrorHitDefault;
@@ -130,7 +125,7 @@ MODULE Processes;
     p.name := "";
     IF NumProcs < MaxNumProcs THEN
       INC(NumProcs);
-      i := FirstProcNum;
+      i := 0;
       WHILE procs[i] # NIL DO INC(i) END;
       p.pid := i; pid := i;
       procs[i] := p;
@@ -148,6 +143,7 @@ MODULE Processes;
     le.more1 := res;
     Log.Put(le)
   END Init;
+
 
   PROCEDURE New*(p: Process; proc: PROC; stack: ARRAY OF BYTE; stHotSize: INTEGER; VAR pid, res: INTEGER);
   BEGIN
@@ -201,16 +197,15 @@ MODULE Processes;
     WHILE i < MaxNumProcs DO
       IF procs[i] # NIL THEN
         p0 := procs[i];
-        IF i = pid THEN (* the error-inducing or error-interrupted process *)
+        IF i = pid THEN (* the error-inducing or error-interrupted ("hit") process *)
           Reset(p0);
-          Enable(p0)
         ELSE
           IF p0.onError = OnErrorReset THEN
-            Reset(p0);
-            Enable(p0)
-          ELSIF p0.onError = OnErrorCont THEN
-            Enable(p0)
+            Reset(p0)
           END
+        END;
+        IF p0.state # StateSuspended THEN
+          Enable(p0)
         END
       END;
       INC(i)
@@ -283,12 +278,11 @@ MODULE Processes;
 
   PROCEDURE Next*;
   BEGIN
+    slotOut(Cp);
     IF Cp.trigger = TrigNone THEN
       slotIn(Cp)
-    ELSE
-      slotOut(Cp)
     END;
-    Coroutines.Transfer(Cp.cor, loop)
+    Coroutines.Transfer(Cp.cor, loop.cor)
   END Next;
 
 
@@ -296,7 +290,7 @@ MODULE Processes;
   BEGIN
     Cp.state := StateSuspended;
     slotOut(Cp);
-    Coroutines.Transfer(Cp.cor, loop)
+    Coroutines.Transfer(Cp.cor, loop.cor)
   END SuspendMe;
 
 
@@ -316,18 +310,28 @@ MODULE Processes;
     VAR pid: INTEGER; readyT: SET;
   BEGIN
     LED(0F8H);
+    Cp := loop;
+    SysCtrl.SetCpPid(loopPid);
     REPEAT
       Watchdog.Reset;
       ProcTimers.GetReadyStatus(readyT);
       IF readyT # {} THEN
         LED(0F9H);
-        pid := 0;
+        pid := 1;
         WHILE pid < MaxNumProcs DO
           IF pid IN readyT THEN
-            IF procs[pid].state = StateEnabled THEN
-              ASSERT(procs[pid].trigger = TrigSome);
-              slotIn(procs[pid]);
-              ProcTimers.ClearReady(pid)
+            IF procs[pid] # NIL THEN
+              IF procs[pid].state = StateEnabled THEN
+                ASSERT(procs[pid].trigger = TrigSome);
+                slotIn(procs[pid]);
+                ProcTimers.ClearReady(pid)
+              END
+            ELSE
+              (* logging *)
+              le.event := Log.Process;
+              le.cause := Log.ProcNilProcHardware;
+              le.more0 := pid;
+              Log.Put(le)
             END
           END;
           INC(pid)
@@ -338,9 +342,9 @@ MODULE Processes;
         IF ~cp.watchdog THEN Watchdog.Stop END;
         Cp := cp;
         SysCtrl.SetCpPid(cp.pid);
-        Coroutines.Transfer(loop, cp.cor);
-        Cp := NIL;
-        SysCtrl.SetCpPid(0)
+        Coroutines.Transfer(loop.cor, cp.cor);
+        SysCtrl.SetCpPid(loopPid);
+        Cp := loop
       END
     UNTIL FALSE
   END loopc;
@@ -351,12 +355,13 @@ MODULE Processes;
     CONST SP = 14;
     VAR jump: Coroutines.Coroutine;
   BEGIN
-    LED(0F6H);
-    SYSTEM.LDREG(SP, LoopStackTop - 128);
+    LED(0F9H);
+    (* Coroutines.Reset will prepare top of stack for coroutine, let's be out of the way *)
+    SYSTEM.LDREG(SP, loopStackTop - 128);
     NEW(jump);
-    Coroutines.Init(loop, loopc, LoopStackBottom, LoopStackSize, LoopStackHotSize, loopPid);
-    LED(0F7H);
-    Coroutines.Transfer(jump, loop)
+    Coroutines.Reset(loop.cor);
+    LED(0FAH);
+    Coroutines.Transfer(jump, loop.cor)
   END Go;
 
   (* process info *)
@@ -368,7 +373,7 @@ MODULE Processes;
       INC(pid)
     UNTIL (pid = MaxNumProcs) OR (procs[pid] # NIL);
     IF pid = MaxNumProcs THEN
-      pid := 0
+      pid := -1
     ELSE
       p0 := procs[pid];
       pd.pid := p0.pid;
@@ -383,13 +388,6 @@ MODULE Processes;
     END
   END GetProcData;
 
-  PROCEDURE GetLoopData*(VAR pd: ProcessData);
-  BEGIN
-    pd.stAdr := LoopStackBottom;
-    pd.stSize := LoopStackSize;
-    pd.stMin := loop.stMin;
-    pd.stHotSize := LoopStackHotSize
-  END GetLoopData;
 
   PROCEDURE GetTimerData*(VAR td: ARRAY OF INTEGER);
   BEGIN
@@ -400,8 +398,9 @@ MODULE Processes;
 
   (* module initialisation and recovery *)
 
-  PROCEDURE Install*;
-    VAR i: INTEGER;
+  PROCEDURE Install*(stackAddr, stackSize, stackHotSize: INTEGER);
+    CONST SP = 14;
+    VAR i, res: INTEGER;
   BEGIN
     i := 0;
     WHILE i < MaxNumProcs DO
@@ -410,9 +409,23 @@ MODULE Processes;
     cp := NIL; Cp := NIL;
     queued := {};
     ProcTimers.Init(P0, P1, P2, P3, P4, P5, P6, P7);
-    LoopStackTop := Kernel.stackOrg;
-    LoopStackBottom := LoopStackTop - LoopStackSize;
-    NEW(loop);
+    (* Timer assignments are not hw-reset for the benefit of error recovery. *)
+    (* Avoid stray timers here *)
+    i := 0;
+    WHILE i < MaxNumProcs DO
+      ProcTimers.Disable(i); INC(i)
+    END;
+    loopStackAddr := stackAddr;
+    loopStackSize := stackSize;
+    loopStackTop := stackAddr + stackSize;
+    loopStackHotSize := stackHotSize;
+    (* Init will prepare top of stack for the coroutine, let's be out of the way *)
+    ASSERT(SYSTEM.REG(SP) < loopStackTop - 128);
+    NEW(loop); ASSERT(loop # NIL);
+    Init(loop, loopc, loopStackAddr, loopStackSize, loopStackHotSize, loopPid, res);
+    ASSERT(res = 0);
+    SetPrio(loop, -1); (* does not matter, just to show it's higher than any other process *)
+    SetName(loop, "lp")
   END Install;
 
   PROCEDURE Recover*;

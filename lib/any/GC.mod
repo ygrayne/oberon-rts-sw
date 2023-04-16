@@ -14,7 +14,7 @@ MODULE GC;
   CONST
     Period = 7;
     Name = "gc";
-    Prio = 0;
+    Prio = 1;
     StackSize = 512;
     StackHotSize = 0;
     GClimitDiv = 4; (* kick in when only 1/4 of heap space is left *)

@@ -13,7 +13,7 @@ MODULE Audit;
 
   CONST
     Period = 7;
-    Prio = 0;
+    Prio = 1;
     Name = "adt";
     StackHotSize = 0;
     Count = 5; (* times Period *)
@@ -36,7 +36,6 @@ MODULE Audit;
       DEC(auditCnt);
       LSB.DisplayNum2Left(10, Procs.NumProcs);
       LSB.DisplayNum2Right(10, auditCnt);
-      LSB.DisplayNum4(16, 06F12H);
       IF auditCnt = 0 THEN
         IF ~logged THEN
           SysCtrl.SetError(0, 0);

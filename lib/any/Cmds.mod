@@ -17,12 +17,11 @@
 
 MODULE Cmds;
 
-  IMPORT Texts, Modules, Console := ConsoleC, RS232, Kernel, Procs := Processes, Log, Upload, Start;
+  IMPORT Texts, Modules, Console := ConsoleC, RS232, Procs := Processes, Log, Upload, Start;
 
   CONST
     Prio = 3;
     Name = "cmd";
-    StackHotSize = 512;
 
   TYPE
     ParRef* = POINTER TO ParDesc;
@@ -165,12 +164,11 @@ MODULE Cmds;
   END cmdc;
 
 
-  PROCEDURE Init*;
-    VAR res, stackAdr, stackSize: INTEGER;
+  PROCEDURE Init*(stackAdr, stackSize, stackHotSize: INTEGER);
+    VAR res: INTEGER;
   BEGIN
-    stackAdr := Kernel.stackOrg - Kernel.stackSize;
-    stackSize := Procs.LoopStackBottom - stackAdr;
-    Procs.Init(cmd, cmdc, stackAdr, stackSize, StackHotSize, pid, res);
+    Procs.Init(cmd, cmdc, stackAdr, stackSize, stackHotSize, pid, res);
+    ASSERT(res = Procs.OK);
     Procs.SetPrio(cmd, Prio);
     Procs.SetOnError(cmd, Procs.OnErrorReset, Procs.OnErrorHitDefault);
     Procs.SetNoWatchdog(cmd);
@@ -180,6 +178,8 @@ MODULE Cmds;
 
 
 BEGIN
-  NEW(cmd); NEW(Par); NEW(Par.text);
+  NEW(cmd); ASSERT(cmd # NIL);
+  NEW(Par); ASSERT(Par # NIL);
+  NEW(Par.text); ASSERT(Par.text # NIL);
   W := Console.C
 END Cmds.
