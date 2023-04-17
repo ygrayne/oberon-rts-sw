@@ -24,7 +24,6 @@ MODULE Errors;
     Assertion* = 7;
 
     (* aborts *)
-    Reset* = 08H + SysCtrl.Reset;
     Kill* = 08H + SysCtrl.Kill;
     Watchdog* = 08H + SysCtrl.Watchdog;
     StackOverflowLim* = 08H + SysCtrl.StackOverflowLim;
@@ -199,7 +198,7 @@ MODULE Errors;
     Kernel.Install(SYSTEM.ADR(trap), 20H);
     Kernel.Install(SYSTEM.ADR(reset), 0H);
     SysCtrl.SetNoRestart; (* all resets go through reset proc above *)
-    ForceRestart := {Reset, StackOverflowLim};
+    ForceRestart := {StackOverflowLim};
     handlingError := FALSE
   END Init;
 

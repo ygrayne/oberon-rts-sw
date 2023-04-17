@@ -14,7 +14,7 @@ MODULE Watchdog;
 
   CONST
     IOadr = DevAdr.WatchdogAdr;
-    Timeout = 500;
+    Timeout = 100;
     IsEnabled = TRUE;
 
   VAR

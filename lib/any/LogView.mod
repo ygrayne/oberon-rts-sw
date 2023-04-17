@@ -20,8 +20,6 @@ MODULE LogView;
       Texts.WriteString(W, " WDOG")
     ELSIF le.cause = SysCtrl.Kill THEN
       Texts.WriteString(W, " KILLB")
-    ELSIF le.cause = SysCtrl.Reset THEN
-      Texts.WriteString(W, " RSTB")
     ELSIF le.cause = SysCtrl.StackOverflowLim THEN
       Texts.WriteString(W, " SOFL")
     ELSIF le.cause = SysCtrl.StackOverflowHot THEN
