@@ -38,8 +38,10 @@ MODULE Audit;
       LSB.DisplayNum2Right(10, auditCnt);
       IF auditCnt = 0 THEN
         IF ~logged THEN
+        (*
           SysCtrl.SetError(0, 0);
           SysCtrl.SetErrPid(0);
+        *)
           le.event := Log.System; le.cause := Log.SysOK;
           SysCtrl.GetReg(le.more0);
           Log.Put(le);

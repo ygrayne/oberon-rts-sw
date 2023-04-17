@@ -7,7 +7,7 @@
 
 MODULE Coroutines;
 
-  IMPORT SYSTEM, StackMonitor, Calltrace;
+  IMPORT SYSTEM, StackMonitor, Calltrace, SysCtrl;
 
   CONST SP = 14;
 
@@ -76,7 +76,8 @@ MODULE Coroutines;
     (* by the the last transfer away from 't' -- when the parameter was actually 'f' *)
     (* hence we access 't' using 'f' here, so the compiler accesses 't' at 'SP + 4' *)
     Calltrace.Select(f.id);
-    StackMonitor.Arm(f.id, f.stAdr, f.stHotLimit, f.stMin)
+    SysCtrl.SetCpPid(f.id);
+    StackMonitor.Arm(f.id, f.stAdr, f.stHotLimit, f.stMin);
 
     (* epilogue: retrieve LNK from stack, adjust stack by +12 *)
     (* branch to LNK, ie. continue "as" t *)

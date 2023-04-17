@@ -341,9 +341,7 @@ MODULE Processes;
         LED(0FAH);
         IF ~cp.watchdog THEN Watchdog.Stop END;
         Cp := cp;
-        SysCtrl.SetCpPid(cp.pid);
         Coroutines.Transfer(loop.cor, cp.cor);
-        SysCtrl.SetCpPid(loopPid);
         Cp := loop
       END
     UNTIL FALSE
