@@ -6,7 +6,7 @@ MODULE CalltraceView;
   https://oberon-rts.org/licences
 **)
 
-  IMPORT Calltrace, Console := ConsoleC, Texts, Modules, SysCtrl;
+  IMPORT Calltrace, Console := ConsoleC, Texts, Modules;
 
   VAR W: Texts.Writer;
 
@@ -48,13 +48,13 @@ MODULE CalltraceView;
     (* For non-error calls, it's useful to see where or which call was done *)
     (* to see the exact location *)
     IF id < 0 THEN Calltrace.Pop(x) END;
-    SysCtrl.GetCpPid(sel);
+    Calltrace.GetCurrent(sel);
     Texts.WriteLn(W); Texts.WriteString(W, "call trace stack: "); Texts.WriteInt(W, sel, 0);
     Texts.WriteString(W, " id: "); Texts.WriteInt(W, id, 0); Texts.WriteLn(W);
     Texts.WriteString(W, "  module                "); Texts.WriteString(W, "    addr");
     Texts.WriteString(W, "   m-addr"); Texts.WriteString(W, "    line"); Texts.WriteLn(W);
     Calltrace.GetCount(cnt);
-    Calltrace.Freeze(sel);
+    Calltrace.Freeze;
     i := 0;
     WHILE i < cnt DO
       Calltrace.Read(x);
@@ -63,7 +63,7 @@ MODULE CalltraceView;
       writeTraceLine(x);
       Texts.WriteLn(W)
     END;
-    Calltrace.Unfreeze(sel);
+    Calltrace.Unfreeze;
     Calltrace.GetMaxCount(cnt);
     Texts.WriteString(W, "max depth: "); Texts.WriteInt(W, cnt, 0); Texts.WriteLn(W)
   END ShowTrace;
