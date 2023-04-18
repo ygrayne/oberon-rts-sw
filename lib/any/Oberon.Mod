@@ -30,7 +30,7 @@ MODULE Oberon;
     (* EO compatibility, eg. as used by System *)
     Par*: Cmds.ParRef;
     Call*: PROCEDURE(name: ARRAY OF CHAR; VAR res: INTEGER);
-    stackSize, stackAddr, stackHotSize: INTEGER;
+    stackSize, stackAddr: INTEGER;
 
 
   PROCEDURE Clock*(): INTEGER;

@@ -4,7 +4,7 @@
   --
 
   --
-  2021 - 2023 Gray, gray@grayraven.org
+  (c) 2021 - 2023 Gray, gray@grayraven.org
   http://oberon-rts.org/licences
 **)
 
@@ -92,16 +92,18 @@ MODULE Errors;
   BEGIN
     (* provided by trap handler (below), or by the hardware for aborts *)
     SysCtrl.GetError(errorNo, addr);
-    (* set by loop/scanner upon activating a process *)
+    (* set by Coroutines.Transfer *)
     SysCtrl.GetCpPid(pid);
     (* for the processes to enquire *)
     SysCtrl.SetErrPid(pid);
 
     (* error logging and call trace stack "corrections" *)
     IF errorNo >= 08H THEN (* abort *)
+      Calltrace.Push(addr); (* not a BL link value, so that's not consistent... *)
       abortNo := errorNo MOD 08H;
       le.event := Log.Abort;
       le.cause := abortNo;
+      DEC(addr, 4);
       le.adr0 := addr;
       addModuleInfo(addr, le);
       Procs.GetName(pid, le.name);
@@ -125,7 +127,7 @@ MODULE Errors;
     (* error handling and logging *)
     IF ~handlingError THEN
       handlingError := TRUE;
-      CalltraceView.ShowTrace(0);
+      CalltraceView.ShowTrace(-1);
       IF (errorNo IN ForceRestart) OR Procs.ForceRestart(pid) THEN
         (* logging *)
         le.event := Log.System;

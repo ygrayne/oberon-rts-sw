@@ -6,7 +6,7 @@ MODULE CalltraceView;
   https://oberon-rts.org/licences
 **)
 
-  IMPORT Calltrace, Console := ConsoleC, Texts, Modules;
+  IMPORT Calltrace, Console := ConsoleC, Texts, Modules, SysCtrl;
 
   VAR W: Texts.Writer;
 
@@ -44,7 +44,8 @@ MODULE CalltraceView;
   PROCEDURE ShowTrace*(id: INTEGER);
     VAR i, x, sel, cnt: INTEGER;
   BEGIN
-    Calltrace.GetSelected(sel);
+    IF id < 0 THEN Calltrace.Pop(x) END; (* experimental *)
+    SysCtrl.GetCpPid(sel);
     Texts.WriteLn(W); Texts.WriteString(W, "call trace stack: "); Texts.WriteInt(W, sel, 0);
     Texts.WriteString(W, " id: "); Texts.WriteInt(W, id, 0); Texts.WriteLn(W);
     Texts.WriteString(W, "  module                "); Texts.WriteString(W, "    addr");

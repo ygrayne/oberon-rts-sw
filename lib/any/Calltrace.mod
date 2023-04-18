@@ -14,7 +14,6 @@ MODULE Calltrace;
     DataAdr = DevAdr.CalltraceDataAdr;
     StatusAdr = DataAdr + 4;
 
-    SelectCtrl = 1;
     ClearCtrl = 2;
     FreezeCtrl = 4;
     UnfreezeCtrl = 8;
@@ -33,21 +32,8 @@ MODULE Calltrace;
 
     NumStacks = 32;
 
+
   (* target: stack 'stkNo' *)
-
-  PROCEDURE Select*(stkNo: INTEGER);
-  BEGIN
-    ASSERT(stkNo < NumStacks);
-    SYSTEM.PUT(StatusAdr, LSL(stkNo, CtrlDataShift) + SelectCtrl)
-  END Select;
-
-
-  PROCEDURE GetSelected*(VAR stkNo: INTEGER);
-  BEGIN
-    SYSTEM.GET(StatusAdr, stkNo);
-    stkNo := BFX(stkNo, Selected1, Selected0)
-  END GetSelected;
-
 
   PROCEDURE Clear*(stkNo: INTEGER);
   BEGIN
@@ -63,7 +49,7 @@ MODULE Calltrace;
   END Freeze;
 
 
-  (* target: selected stack *)
+  (* target: current stack controlled by process id in SCS *)
 
   PROCEDURE Pop*(VAR value: INTEGER);
     VAR x: INTEGER;
@@ -149,6 +135,14 @@ MODULE Calltrace;
     SYSTEM.PUT(StatusAdr, LSL(stkNo, CtrlDataShift) + UnfreezeCtrl);
     SYSTEM.PUT(DataAdr, 0) (* push dummy value, will be hw-popped upon exiting this procedure *)
   END Unfreeze;
+
+  (* for debugging purposes *)
+
+  PROCEDURE GetSelected*(VAR stkNo: INTEGER);
+  BEGIN
+    SYSTEM.GET(StatusAdr, stkNo);
+    stkNo := BFX(stkNo, Selected1, Selected0)
+  END GetSelected;
 
 END Calltrace.
 

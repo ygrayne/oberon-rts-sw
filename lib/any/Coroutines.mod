@@ -61,7 +61,8 @@ MODULE Coroutines;
     (* prologue: push caller's LNK and parameters 'f' and 't' onto f's stack *)
 
     (* disarm stack monitor, get coroutine number *)
-    StackMonitor.Disarm(f.id, f.stAdr, f.stHotLimit, f.stMin);
+    StackMonitor.Disarm(f.stAdr, f.stHotLimit, f.stMin);
+    SysCtrl.GetCpPid(f.id); (* for anonymous coroutines, eg. for debuggers *)
 
     (* stack switching *)
     (* save f's SP *)
@@ -71,13 +72,13 @@ MODULE Coroutines;
     SYSTEM.LDREG(SP, t.sp);
     (* now in t's stack *)
 
-    (* set calltrace stack and arm stack overflow monitor *)
+    (* set current process id and arm stack overflow monitor *)
+    (* current process id will also select the calltrace stack directly in the hardware *)
     (* in this stack, parameter 't' is at SP + 4, set either initially by Reset, or *)
     (* by the the last transfer away from 't' -- when the parameter was actually 'f' *)
     (* hence we access 't' using 'f' here, so the compiler accesses 't' at 'SP + 4' *)
-    Calltrace.Select(f.id);
     SysCtrl.SetCpPid(f.id);
-    StackMonitor.Arm(f.id, f.stAdr, f.stHotLimit, f.stMin);
+    StackMonitor.Arm(f.stAdr, f.stHotLimit, f.stMin);
 
     (* epilogue: retrieve LNK from stack, adjust stack by +12 *)
     (* branch to LNK, ie. continue "as" t *)

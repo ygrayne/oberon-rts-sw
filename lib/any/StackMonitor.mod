@@ -31,9 +31,8 @@ MODULE StackMonitor;
   END GetMin;
 
 
-  PROCEDURE Disarm*(VAR corNum, stackAdr, hotAdr, stackMin: INTEGER);
+  PROCEDURE Disarm*(VAR stackAdr, hotAdr, stackMin: INTEGER);
   BEGIN
-    SYSTEM.GET(CorNumAdr, corNum);
     SYSTEM.GET(StackLimitAdr, stackAdr);
     SYSTEM.GET(HotZoneAdr, hotAdr);
     SYSTEM.GET(MinValueAdr, stackMin);
@@ -43,9 +42,8 @@ MODULE StackMonitor;
   END Disarm;
 
 
-  PROCEDURE Arm*(corNum, stackAdr, hotAdr, stackMin: INTEGER);
+  PROCEDURE Arm*(stackAdr, hotAdr, stackMin: INTEGER);
   BEGIN
-    SYSTEM.PUT(CorNumAdr, corNum);
     SYSTEM.PUT(StackLimitAdr, stackAdr);
     SYSTEM.PUT(HotZoneAdr, hotAdr);
     SYSTEM.PUT(MinValueAdr, stackMin)
