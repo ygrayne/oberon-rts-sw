@@ -74,7 +74,7 @@ MODULE Errors;
   * the processes' state is as per the error occurrence
   * which includes the error-inducing process, or the one interrupted
     by the hardware-error-signal, which may or may not be the one
-    producing the error, eg. in the case of the reset or kill buttons
+    producing the error, eg. in the case of the kill buttons
 
   NOT hardware reset, ie. values are still set in the hardware, as per the hw design:
   * enable and ticker assigments of process timers
@@ -85,21 +85,35 @@ MODULE Errors;
   * allocates the stack in the memory area starting from Kernel.stackOrg down
   * disables he stack monitor
   * disables the watchdog
+
+  This code is called by loading its address into the PC, not via BL, hence
+  its prologue's push of the LNK register onto the stack pushes
+  * in the abort case, the LNK value of the last call of the interrupted process,
+  * in the trap case, the LNK value of calling SysCtrl.ResetSystem.
+  This value needs to be popped from the calltrace.
   *)
 
   PROCEDURE reset;
     VAR x, errorNo, addr, pid, trapInstr, abortNo, trapNo, trapPos: INTEGER;
   BEGIN
+    (* pop invalid LNK value *)
+    Calltrace.Pop(x);
+
     (* provided by trap handler (below), or by the hardware for aborts *)
     SysCtrl.GetError(errorNo, addr);
+
     (* set by Coroutines.Transfer *)
     SysCtrl.GetCpPid(pid);
-    (* for the processes to enquire *)
+
+    (* for the processes to enquire after they return from error handling *)
     SysCtrl.SetErrPid(pid);
 
     (* error logging and call trace stack "corrections" *)
     IF errorNo >= 08H THEN (* abort *)
-      Calltrace.Push(addr); (* not a BL link value, so that's not consistent... *)
+      (* In the trap case, the LNK address of the trap handler call is on top, ie. *)
+      (* the error location. Let's also push the error location for the abort case, *)
+      (* even though its not a LNK value. *)
+      Calltrace.Push(addr);
       abortNo := errorNo MOD 08H;
       le.event := Log.Abort;
       le.cause := abortNo;
@@ -119,15 +133,20 @@ MODULE Errors;
       addModuleInfo(addr, le);
       Procs.GetName(pid, le.name);
       Log.Put(le);
+      (* For traps, we have also the LNK values for resetSystem and *)
+      (* SysCtrl.ResetSystem om the calltrace stack. *)
       Calltrace.Pop(x);
       Calltrace.Pop(x);
-      Calltrace.Pop(x)
     END;
+
+    CalltraceView.ShowTrace(-1);
 
     (* error handling and logging *)
     IF ~handlingError THEN
       handlingError := TRUE;
-      CalltraceView.ShowTrace(-1);
+      (* let's contamine Pid 0's calltrace stack, it will be reset *)
+      (* anyway upon Processes.Go *)
+      SysCtrl.SetCpPid(0);
       IF (errorNo IN ForceRestart) OR Procs.ForceRestart(pid) THEN
         (* logging *)
         le.event := Log.System;

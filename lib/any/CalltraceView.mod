@@ -44,7 +44,10 @@ MODULE CalltraceView;
   PROCEDURE ShowTrace*(id: INTEGER);
     VAR i, x, sel, cnt: INTEGER;
   BEGIN
-    IF id < 0 THEN Calltrace.Pop(x) END; (* experimental *)
+    (* Remove call to ShowTrace for negative id's used during error handling. *)
+    (* For non-error calls, it's useful to see where or which call was done *)
+    (* to see the exact location *)
+    IF id < 0 THEN Calltrace.Pop(x) END;
     SysCtrl.GetCpPid(sel);
     Texts.WriteLn(W); Texts.WriteString(W, "call trace stack: "); Texts.WriteInt(W, sel, 0);
     Texts.WriteString(W, " id: "); Texts.WriteInt(W, id, 0); Texts.WriteLn(W);
