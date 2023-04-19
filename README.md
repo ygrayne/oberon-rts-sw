@@ -11,7 +11,11 @@ Here is the sister repo for the corresponding hardware: [oberon-rts-hw](https://
 
 ## Current Status
 
-* 2023-04-09: Restarted the Process module from the ground up, simpler for now, but well integrated with the error handling concept, which works now apart from repeated reset and restart protection.
+* 2023-04-18: added calltrace feature, cleaned up error handling and reporting
+
+* 2023-04-10: added RTC
+
+* 2023-04-09: restarted the Process module from the ground up, simpler for now, but well integrated with the error handling concept, which works now apart from repeated reset and restart protection.
 
 * 2023-04-05: (re-) implemented the watchdog and the stack overflow monitor. Unified error signals from the hardware with the trap handling. The errors result in a reset and reload of the system for now, which is one possible corrective measure, but a more subtle way, where the (some) processes recover and can continue will be added. Need to rethink the processes first. Good thing is that the logging of all errors is back.
 
@@ -22,7 +26,8 @@ Here is the sister repo for the corresponding hardware: [oberon-rts-hw](https://
 
 ## Next Up
 
-* Finally integrate the RTC on the DE2-115 board.
+* Extend processes API
+* Critical region protection
 
 
 ## Architectures
