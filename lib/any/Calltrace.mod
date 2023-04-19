@@ -14,10 +14,11 @@ MODULE Calltrace;
     DataAdr = DevAdr.CalltraceDataAdr;
     StatusAdr = DataAdr + 4;
 
-    SelectCtrl = 1;
     ClearCtrl = 2;
     FreezeCtrl = 4;
     UnfreezeCtrl = 8;
+    BlockCtrl = 16;
+    UnblockCtrl = 32;
 
     CtrlDataShift = 8;
 
@@ -32,38 +33,42 @@ MODULE Calltrace;
     Selected1 = 29;
 
     NumStacks = 32;
+    Stacks = {0 .. NumStacks-1};
+
 
   (* target: stack 'stkNo' *)
 
-  PROCEDURE Select*(stkNo: INTEGER);
-  BEGIN
-    ASSERT(stkNo < NumStacks);
-    SYSTEM.PUT(StatusAdr, LSL(stkNo, CtrlDataShift) + SelectCtrl)
-  END Select;
-
-
-  PROCEDURE GetSelected*(VAR stkNo: INTEGER);
-  BEGIN
-    SYSTEM.GET(StatusAdr, stkNo);
-    stkNo := BFX(stkNo, Selected1, Selected0)
-  END GetSelected;
-
-
   PROCEDURE Clear*(stkNo: INTEGER);
   BEGIN
+    ASSERT(stkNo IN Stacks);
     SYSTEM.PUT(StatusAdr, LSL(stkNo, CtrlDataShift) + ClearCtrl);
   END Clear;
 
+  (* target: all stacks (global block/unblock, only for hw/push/pop *)
 
-  PROCEDURE Freeze*(stkNo: INTEGER);
+  PROCEDURE Block*;
     VAR x: INTEGER;
   BEGIN
     SYSTEM.GET(DataAdr, x); (* pop top element hw-pushed by entering this procedure *)
-    SYSTEM.PUT(StatusAdr, LSL(stkNo, CtrlDataShift) + FreezeCtrl)
+    SYSTEM.PUT(StatusAdr, BlockCtrl)
+  END Block;
+
+
+  PROCEDURE Unblock*;
+  BEGIN
+    SYSTEM.PUT(StatusAdr, UnblockCtrl);
+    SYSTEM.PUT(DataAdr, 0) (* push dummy value, will be hw-popped upon exiting this procedure *)
+  END Unblock;
+
+  (* target: current stack controlled by process id in SCS *)
+
+  PROCEDURE Freeze*;
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(DataAdr, x); (* pop top element hw-pushed by entering this procedure *)
+    SYSTEM.PUT(StatusAdr, FreezeCtrl)
   END Freeze;
 
-
-  (* target: selected stack *)
 
   PROCEDURE Pop*(VAR value: INTEGER);
     VAR x: INTEGER;
@@ -112,6 +117,16 @@ MODULE Calltrace;
   END GetMaxCount;
 
 
+  PROCEDURE GetCurrent*(VAR stkNo: INTEGER);
+    VAR x: INTEGER;
+  BEGIN
+    SYSTEM.GET(DataAdr, x);
+    SYSTEM.GET(StatusAdr, stkNo);
+    SYSTEM.PUT(DataAdr, x);
+    stkNo := BFX(stkNo, Selected1, Selected0)
+  END GetCurrent;
+
+
   PROCEDURE Frozen*(): BOOLEAN;
     RETURN SYSTEM.BIT(StatusAdr, FrozenBit)
   END Frozen;
@@ -144,11 +159,12 @@ MODULE Calltrace;
   END Read;
 
 
-  PROCEDURE Unfreeze*(stkNo: INTEGER);
+  PROCEDURE Unfreeze*;
   BEGIN
-    SYSTEM.PUT(StatusAdr, LSL(stkNo, CtrlDataShift) + UnfreezeCtrl);
+    SYSTEM.PUT(StatusAdr, UnfreezeCtrl);
     SYSTEM.PUT(DataAdr, 0) (* push dummy value, will be hw-popped upon exiting this procedure *)
   END Unfreeze;
+
 
 END Calltrace.
 

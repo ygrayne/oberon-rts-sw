@@ -50,6 +50,7 @@ MODULE Log;
     ProcNew* = 0;
     ProcEnable* = 1;
     ProcReset* = 2;
+    ProcNilProcHardware* = 3;
 
     (* log buffer hw addresses *)
     DataAdr = DevAdr.LogDataAdr;

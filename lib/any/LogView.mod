@@ -7,23 +7,19 @@
 
 MODULE LogView;
 
-  IMPORT SYSTEM, Log, Modules, Texts, Console := ConsoleC, RS232, SysCtrl, Procs := Processes;
+  IMPORT Log, Texts, Console := ConsoleC, RS232, SysCtrl, Procs := Processes;
 
   VAR
     W: Texts.Writer;
 
   PROCEDURE reportAbort(le: Log.Entry);
-    VAR mod: Modules.Module;
   BEGIN
-    mod := SYSTEM.VAL(Modules.Module, le.adr1);
-    Texts.WriteClock(W, le.when);
+    Texts.Write(W, " "); Texts.WriteClock(W, le.when);
     Texts.WriteString(W, " ABORT");
     IF le.cause = SysCtrl.Watchdog THEN
       Texts.WriteString(W, " WDOG")
     ELSIF le.cause = SysCtrl.Kill THEN
       Texts.WriteString(W, " KILLB")
-    ELSIF le.cause = SysCtrl.Reset THEN
-      Texts.WriteString(W, " RSTB")
     ELSIF le.cause = SysCtrl.StackOverflowLim THEN
       Texts.WriteString(W, " SOFL")
     ELSIF le.cause = SysCtrl.StackOverflowHot THEN
@@ -40,10 +36,8 @@ MODULE LogView;
 
 
   PROCEDURE reportTrap(le: Log.Entry);
-    VAR mod: Modules.Module;
   BEGIN
-    mod := SYSTEM.VAL(Modules.Module, le.adr1);
-    Texts.WriteClock(W, le.when);
+    Texts.Write(W, " "); Texts.WriteClock(W, le.when);
     Texts.WriteString(W, " TRAP "); Texts.WriteInt(W, le.cause, 0);
     Texts.WriteString(W, " proc "); Texts.WriteString(W, le.name);
     Texts.WriteString(W, " in "); Texts.WriteString(W, le.str0);
@@ -56,7 +50,7 @@ MODULE LogView;
 
   PROCEDURE reportSystem(le: Log.Entry);
   BEGIN
-    Texts.WriteClock(W, le.when);
+    Texts.Write(W, " "); Texts.WriteClock(W, le.when);
     IF le.cause = Log.SysColdStart THEN
       Texts.WriteString(W, " SYS COLD START");
       Texts.WriteString(W, " SCR:"); Texts.WriteHex(W, le.more0);
@@ -106,7 +100,7 @@ MODULE LogView;
 
   PROCEDURE reportProcess(le: Log.Entry);
   BEGIN
-    Texts.WriteClock(W, le.when);
+    Texts.Write(W, " "); Texts.WriteClock(W, le.when);
     IF le.cause = Log.ProcNew THEN
       Texts.WriteString(W, " PROC NEW: "); Texts.WriteInt(W, le.more0, 0);
       IF le.more1 = Procs.OK THEN
@@ -122,6 +116,9 @@ MODULE LogView;
     ELSIF le.cause = Log.ProcReset THEN
       Texts.WriteString(W, " PROC RST: "); Texts.WriteInt(W, le.more0, 0);
       Texts.WriteString(W, " "); Texts.WriteString(W, le.name)
+     ELSIF le.cause = Log.ProcNilProcHardware THEN
+      Texts.WriteString(W, " PROC NIL: "); Texts.WriteInt(W, le.more0, 0);
+      Texts.WriteString(W, " has HW allocated")
     ELSE
       Texts.WriteString(W, " SYS ERROR: inconsistent data: proc log cause")
     END;

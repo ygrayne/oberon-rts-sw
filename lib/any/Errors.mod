@@ -4,14 +4,14 @@
   --
 
   --
-  2021 - 2023 Gray, gray@grayraven.org
+  (c) 2021 - 2023 Gray, gray@grayraven.org
   http://oberon-rts.org/licences
 **)
 
 MODULE Errors;
 
   IMPORT
-    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start, Calltrace, CalltraceView;
+    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start, Calltrace, CalltraceView, ConsoleC, Texts;
 
   CONST
     (* traps *)
@@ -24,7 +24,6 @@ MODULE Errors;
     Assertion* = 7;
 
     (* aborts *)
-    Reset* = 08H + SysCtrl.Reset;
     Kill* = 08H + SysCtrl.Kill;
     Watchdog* = 08H + SysCtrl.Watchdog;
     StackOverflowLim* = 08H + SysCtrl.StackOverflowLim;
@@ -33,8 +32,9 @@ MODULE Errors;
 
   VAR
     ForceRestart*: SET; (* system will always be restarted upon these errors *)
-    handlingError: BOOLEAN;
     le: Log.Entry;
+    handlingError: BOOLEAN;
+    W: Texts.Writer;
 
   PROCEDURE SetForceRestart*(errors: SET);
   BEGIN
@@ -57,11 +57,9 @@ MODULE Errors;
     mod := Modules.root;
     WHILE (mod # NIL) & ((addr < mod.code) OR (addr >= mod.imp)) DO mod := mod.next END;
     IF mod # NIL THEN
-      le.adr1 := SYSTEM.VAL(INTEGER, mod);
       le.str0 := mod.name;
       le.more1 := (addr - mod.code) DIV 4;
     ELSE
-      le.adr1 := 0;
       le.str0 := "unknown module";
       le.more1 := 0
     END
@@ -76,7 +74,7 @@ MODULE Errors;
   * the processes' state is as per the error occurrence
   * which includes the error-inducing process, or the one interrupted
     by the hardware-error-signal, which may or may not be the one
-    producing the error, eg. in the case of the reset or kill buttons
+    producing the error, eg. in the case of the kill buttons
 
   NOT hardware reset, ie. values are still set in the hardware, as per the hw design:
   * enable and ticker assigments of process timers
@@ -87,31 +85,47 @@ MODULE Errors;
   * allocates the stack in the memory area starting from Kernel.stackOrg down
   * disables he stack monitor
   * disables the watchdog
+
+  This code is called by loading its address into the PC, not via BL, hence
+  its prologue's push of the LNK register onto the stack pushes
+  * in the abort case, the LNK value of the last call of the interrupted process,
+  * in the trap case, the LNK value of calling SysCtrl.ResetSystem.
+  This value needs to be popped from the calltrace.
   *)
 
   PROCEDURE reset;
-    VAR x, errorNo, addr, pid, trapInstruction, abortNo, trapNo, trapPos: INTEGER;
+    VAR x, errorNo, addr, pid, trapInstr, abortNo, trapNo, trapPos: INTEGER;
   BEGIN
+    (* pop invalid LNK value *)
+    Calltrace.Pop(x);
+
     (* provided by trap handler (below), or by the hardware for aborts *)
     SysCtrl.GetError(errorNo, addr);
-    (* set by loop/scanner upon activating a process *)
+
+    (* set by Coroutines.Transfer *)
     SysCtrl.GetCpPid(pid);
 
+    (* for the processes to enquire after they return from error handling *)
     SysCtrl.SetErrPid(pid);
 
-    (* error logging *)
+    (* error logging and call trace stack "corrections" *)
     IF errorNo >= 08H THEN (* abort *)
+      (* In the trap case, the LNK address of the trap handler call is on top, ie. *)
+      (* the error location. Let's also push the error location for the abort case, *)
+      (* even though it's not a LNK value. *)
+      Calltrace.Push(addr);
       abortNo := errorNo MOD 08H;
       le.event := Log.Abort;
       le.cause := abortNo;
+      DEC(addr, 4);
       le.adr0 := addr;
       addModuleInfo(addr, le);
       Procs.GetName(pid, le.name);
       Log.Put(le)
     ELSE (* trap *)
-      SYSTEM.GET(addr, trapInstruction);
-      trapNo := trapInstruction DIV 10H MOD 10H;
-      trapPos := trapInstruction DIV 100H MOD 10000H;
+      SYSTEM.GET(addr, trapInstr);
+      trapNo := trapInstr DIV 10H MOD 10H;
+      trapPos := trapInstr DIV 100H MOD 10000H;
       le.event := Log.Trap;
       le.cause := trapNo;
       le.adr0 := addr;
@@ -119,15 +133,20 @@ MODULE Errors;
       addModuleInfo(addr, le);
       Procs.GetName(pid, le.name);
       Log.Put(le);
-      Calltrace.Pop(x);
+      (* For traps, we have also the LNK values for resetSystem and *)
+      (* SysCtrl.ResetSystem on the calltrace stack. *)
       Calltrace.Pop(x);
       Calltrace.Pop(x)
     END;
 
+    CalltraceView.ShowTrace(-1);
+
     (* error handling and logging *)
     IF ~handlingError THEN
       handlingError := TRUE;
-      CalltraceView.ShowTrace(0);
+      (* let's contaminate Pid 0's calltrace stack, it will be reset *)
+      (* anyway upon Processes.Go *)
+      SysCtrl.SetCpPid(0);
       IF (errorNo IN ForceRestart) OR Procs.ForceRestart(pid) THEN
         (* logging *)
         le.event := Log.System;
@@ -180,11 +199,11 @@ MODULE Errors;
 
   PROCEDURE trap(VAR a: INTEGER; b: INTEGER); (* uses process stack *)
     CONST LNK = 15;
-    VAR adr, trapNo, trapInstruction: INTEGER;
+    VAR adr, trapNo, trapInstr: INTEGER;
   BEGIN
     adr := SYSTEM.REG(LNK); (* trap was called via BL, hence LNK contains the return address = offending location + 4 *)
     DEC(adr, 4);
-    SYSTEM.GET(adr, trapInstruction); trapNo := trapInstruction DIV 10H MOD 10H; (*trap number*)
+    SYSTEM.GET(adr, trapInstr); trapNo := trapInstr DIV 10H MOD 10H; (*trap number*)
     IF trapNo = 0 THEN (* execute NEW *)
       Kernel.New(a, b)
     ELSE (* error trap *)
@@ -200,8 +219,10 @@ MODULE Errors;
     Kernel.Install(SYSTEM.ADR(trap), 20H);
     Kernel.Install(SYSTEM.ADR(reset), 0H);
     SysCtrl.SetNoRestart; (* all resets go through reset proc above *)
-    ForceRestart := {Reset, StackOverflowLim};
+    ForceRestart := {StackOverflowLim};
     handlingError := FALSE
   END Init;
 
+BEGIN
+  W := ConsoleC.C
 END Errors.

@@ -7,7 +7,7 @@
 
 MODULE Coroutines;
 
-  IMPORT SYSTEM, StackMonitor, Calltrace;
+  IMPORT SYSTEM, StackMonitor, Calltrace, SysCtrl;
 
   CONST SP = 14;
 
@@ -21,19 +21,11 @@ MODULE Coroutines;
     END;
 
 
-  PROCEDURE Init*(cor: Coroutine; proc: PROCEDURE; stAdr, stSize, stHotSize: INTEGER; id: INTEGER);
+  PROCEDURE Reset*(cor: Coroutine);
   BEGIN
     ASSERT(cor # NIL);
-    (* set the params for the stack monitor, see Transfer *)
-    cor.stAdr := stAdr;
-    cor.stHotLimit := stAdr + stHotSize;
-    cor.stSize := stSize;
-    cor.stMin := stAdr + stSize;
-    cor.id := id;
-    cor.proc := SYSTEM.VAL(INTEGER, proc);
-
     (* set up the stack for the initial transfer *)
-    cor.sp := stAdr + stSize;
+    cor.sp := cor.stAdr + cor.stSize;
     (* place 'cor' for the initial transfer to this coroutine, at SP + 4 with SP pointing to LNK, seet below *)
     DEC(cor.sp, 8);
     SYSTEM.PUT(cor.sp, SYSTEM.VAL(INTEGER, cor));
@@ -45,19 +37,20 @@ MODULE Coroutines;
     (* now cor.sp is 3 * 4-byte addresses "down" from the top of the stack *)
     (* hence the initial Transfer's epilogue works *)
     Calltrace.Clear(cor.id)
-  END Init;
+  END Reset;
 
 
-  PROCEDURE Reset*(cor: Coroutine);
+  PROCEDURE Init*(cor: Coroutine; proc: PROCEDURE; stAdr, stSize, stHotSize: INTEGER; id: INTEGER);
   BEGIN
     ASSERT(cor # NIL);
-    cor.sp := cor.stAdr + cor.stSize;
-    DEC(cor.sp, 8);
-    SYSTEM.PUT(cor.sp, SYSTEM.VAL(INTEGER, cor));
-    DEC(cor.sp, 4);
-    SYSTEM.PUT(cor.sp, cor.proc);
-    Calltrace.Clear(cor.id)
-  END Reset;
+    cor.stAdr := stAdr;
+    cor.stHotLimit := stAdr + stHotSize;
+    cor.stSize := stSize;
+    cor.stMin := stAdr + stSize;
+    cor.id := id;
+    cor.proc := SYSTEM.VAL(INTEGER, proc);
+    Reset(cor)
+  END Init;
 
 
   PROCEDURE Transfer*(f, t: Coroutine);
@@ -68,7 +61,8 @@ MODULE Coroutines;
     (* prologue: push caller's LNK and parameters 'f' and 't' onto f's stack *)
 
     (* disarm stack monitor, get coroutine number *)
-    StackMonitor.Disarm(f.id, f.stAdr, f.stHotLimit, f.stMin);
+    StackMonitor.Disarm(f.stAdr, f.stHotLimit, f.stMin);
+    SysCtrl.GetCpPid(f.id); (* for anonymous coroutines, eg. for debuggers *)
 
     (* stack switching *)
     (* save f's SP *)
@@ -78,14 +72,13 @@ MODULE Coroutines;
     SYSTEM.LDREG(SP, t.sp);
     (* now in t's stack *)
 
-    (* set calltrace stack and arm stack overflow monitor *)
+    (* set current process id and arm stack overflow monitor *)
+    (* current process id will also select the calltrace stack directly in the hardware *)
     (* in this stack, parameter 't' is at SP + 4, set either initially by Reset, or *)
-    (* by the the last transfer away from t -- when the parameter was actually 'f' *)
+    (* by the the last transfer away from 't' -- when the parameter was actually 'f' *)
     (* hence we access 't' using 'f' here, so the compiler accesses 't' at 'SP + 4' *)
-
-    Calltrace.Select(f.id);
-
-    StackMonitor.Arm(f.id, f.stAdr, f.stHotLimit, f.stMin)
+    SysCtrl.SetCpPid(f.id);
+    StackMonitor.Arm(f.stAdr, f.stHotLimit, f.stMin);
 
     (* epilogue: retrieve LNK from stack, adjust stack by +12 *)
     (* branch to LNK, ie. continue "as" t *)

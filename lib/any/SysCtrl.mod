@@ -23,7 +23,6 @@ MODULE SysCtrl;
     SysReset*        = 1;    (* = 1: reset system *)
 
     (* abort causes -- wired in FPGA, see sys ctrl*)
-    Reset* = 0;
     Kill* = 1;
     Watchdog* = 2;
     StackOverflowLim* = 3;
