@@ -7,7 +7,7 @@
 
 MODULE LogView;
 
-  IMPORT Log, Texts, Console := ConsoleC, RS232, SysCtrl, Procs := Processes;
+  IMPORT Log, Texts, Console := ConsoleB, RS232, SysCtrl, Procs := Processes;
 
   VAR
     W: Texts.Writer;
