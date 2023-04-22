@@ -49,7 +49,7 @@ MODULE RS232dev;
     DeviceDesc* = RECORD(Texts.TextDeviceDesc)
       dataAdr*, statusAdr*: INTEGER;
       rxTimeout*, txTimeout*: INTEGER;
-      rxCond*, txCond*: BYTE
+      rxCond*, txCond*: INTEGER
     END;
 
   PROCEDURE Init*(dev: Device; deviceNo: INTEGER);
@@ -58,8 +58,8 @@ MODULE RS232dev;
     IF deviceNo = 0 THEN
       dev.dataAdr := Dev0DataAdr;
       dev.statusAdr := Dev0StatusAdr;
-      dev.rxCond := RXBNE;
-      dev.txCond := TXBNF;
+      dev.rxCond := RXNE;               (* default: non-buffered use *)
+      dev.txCond := TXBE;
       dev.rxTimeout := 0;
       dev.txTimeout := 0
     (*

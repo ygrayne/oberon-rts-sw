@@ -87,5 +87,7 @@ MODULE Upload;
   END Run;
 
 BEGIN
-  NEW(dev); RS232dev.Init(dev, RS232dev.Dev0); RS232dev.SetCond(dev, RS232dev.RXBNE, RS232dev.TXBNF)
+  NEW(dev); ASSERT(dev # NIL);
+  RS232dev.Init(dev, RS232dev.Dev0);
+  RS232dev.SetCond(dev, RS232dev.RXBNE, RS232dev.TXBNF) (* buffered use *)
 END Upload.
