@@ -14,6 +14,7 @@ MODULE Calltrace;
     DataAdr = DevAdr.CalltraceDataAdr;
     StatusAdr = DataAdr + 4;
 
+    (* control *)
     ClearCtrl = 2;
     FreezeCtrl = 4;
     UnfreezeCtrl = 8;
@@ -22,9 +23,13 @@ MODULE Calltrace;
 
     CtrlDataShift = 8;
 
+    (* status bits *)
     EmptyBit = 0;
     FullBit = 1;
-    FrozenBit = 2;
+    OverflowBit = 2;
+    FrozenBit = 3;
+
+    (* status value ranges *)
     Count0 = 8;
     Count1 = 15;
     MaxCount0 = 16;
@@ -32,6 +37,7 @@ MODULE Calltrace;
     Selected0 = 24;
     Selected1 = 29;
 
+    (* config *)
     NumStacks = 32;
     Stacks = {0 .. NumStacks-1};
 
@@ -151,6 +157,16 @@ MODULE Calltrace;
     RETURN full
   END Full;
 
+
+  PROCEDURE Overflow*(): BOOLEAN;
+    VAR x: INTEGER; ovfl: BOOLEAN;
+  BEGIN
+    SYSTEM.GET(DataAdr, x);
+    ovfl := SYSTEM.BIT(StatusAdr, OverflowBit);
+    SYSTEM.PUT(DataAdr, x);
+    RETURN ovfl
+  END Overflow;
+
   (* target: frozen stack *)
 
   PROCEDURE Read*(VAR value: INTEGER);
@@ -167,4 +183,3 @@ MODULE Calltrace;
 
 
 END Calltrace.
-

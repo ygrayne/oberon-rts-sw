@@ -11,7 +11,7 @@
 MODULE Errors;
 
   IMPORT
-    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start, Calltrace, CalltraceView, ConsoleC, Texts;
+    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start, Calltrace, CalltraceView, Console := ConsoleB, Texts;
 
   CONST
     (* traps *)
@@ -224,5 +224,5 @@ MODULE Errors;
   END Init;
 
 BEGIN
-  W := ConsoleC.C
+  W := Console.C
 END Errors.

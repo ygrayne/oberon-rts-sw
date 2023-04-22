@@ -6,7 +6,7 @@ MODULE CalltraceView;
   https://oberon-rts.org/licences
 **)
 
-  IMPORT Calltrace, Console := ConsoleC, Texts, Modules;
+  IMPORT Calltrace, Console := ConsoleB, Texts, Modules;
 
   VAR W: Texts.Writer;
 
