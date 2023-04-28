@@ -77,7 +77,7 @@ MODULE GC;
     Procs.SetPrio(gc, Prio);
     Procs.SetPeriod(gc, Period);  (* enables timer *)
     Procs.SetName(gc, Name);
-    Procs.SetOnError(gc, Procs.OnErrorCont, Procs.OnErrorHitRestart);
+    Procs.SetOnError(gc, Procs.OnErrorReset, Procs.OnErrorHitRestart);
     Procs.Enable(gc);
     ASSERT(res = Procs.OK)
   END Init;

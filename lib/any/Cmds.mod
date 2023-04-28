@@ -17,7 +17,7 @@
 
 MODULE Cmds;
 
-  IMPORT Texts, Modules, Console := ConsoleC, RS232, Procs := Processes, Log, Upload, Start;
+  IMPORT Texts, Modules, Console := ConsoleB, RS232, Procs := Processes, Log, Upload, Start;
 
   CONST
     Prio = 3;

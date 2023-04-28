@@ -24,16 +24,16 @@ MODULE Errors;
     Assertion* = 7;
 
     (* aborts *)
-    Kill* = 08H + SysCtrl.Kill;
-    Watchdog* = 08H + SysCtrl.Watchdog;
-    StackOverflowLim* = 08H + SysCtrl.StackOverflowLim;
-    StackOverflowHot* = 08H + SysCtrl.StackOverflowLim;
+    (* note: wired in sys ctrl and status register in hw *)
+    Kill* = SysCtrl.Kill;
+    Watchdog* = SysCtrl.Watchdog;
+    StackOverflowLim* = SysCtrl.StackOverflowLim;
+    StackOverflowHot* = SysCtrl.StackOverflowHot;
 
 
   VAR
     ForceRestart*: SET; (* system will always be restarted upon these errors *)
     le: Log.Entry;
-    handlingError: BOOLEAN;
 
   PROCEDURE SetForceRestart*(errors: SET);
   BEGIN
@@ -69,11 +69,13 @@ MODULE Errors;
   At this point, the system has been hardware-reset, nothing else.
 
   That is:
-  * the ready queue and Cp on Processes are as per the error occurrence
+  * the ready queue and Cp on Processes are as per the error occurrence,
+    ie. it could be insonsistent
   * the processes' state is as per the error occurrence
   * which includes the error-inducing process, or the one interrupted
     by the hardware-error-signal, which may or may not be the one
     producing the error, eg. in the case of the kill buttons
+  * SCS has error handling bit set, ie. no other errors are accepted
 
   NOT hardware reset, ie. values are still set in the hardware, as per the hw design:
   * enable and ticker assigments of process timers
@@ -82,10 +84,10 @@ MODULE Errors;
 
   The bootloader:
   * allocates the stack in the memory area starting from Kernel.stackOrg down
-  * disables he stack monitor
+  * disables the stack monitor
   * disables the watchdog
 
-  This code is called by loading its address into the PC, not via BL, hence
+  The following code is called by loading its address into the PC, not via BL, hence
   its prologue's push of the LNK register onto the stack pushes
   * in the abort case, the LNK value of the last call of the interrupted process,
   * in the trap case, the LNK value of calling SysCtrl.ResetSystem.
@@ -108,7 +110,7 @@ MODULE Errors;
     SysCtrl.SetErrPid(pid);
 
     (* error logging and call trace stack "corrections" *)
-    IF errorNo >= 08H THEN (* abort *)
+    IF errorNo >= 010H THEN (* abort *)
       (* In the trap case, the LNK address of the trap handler call is on top, ie. *)
       (* the error location. Let's also push the error location for the abort case, *)
       (* even though it's not a LNK value. *)
@@ -132,61 +134,49 @@ MODULE Errors;
       addModuleInfo(addr, le);
       Procs.GetName(pid, le.name);
       Log.Put(le);
-      (* For traps, we have also the LNK values for resetSystem and *)
-      (* SysCtrl.ResetSystem on the calltrace stack. *)
-      Calltrace.Pop(x);
+      (* For traps, we have also the LNK value for  SysCtrl.SetError *)
+      (* on the calltrace stack. *)
       Calltrace.Pop(x)
     END;
 
-    CalltraceView.ShowTrace(-1);
+    CalltraceView.ShowTrace(-1); (* should be conditional and configurable TBD *)
 
     (* error handling and logging *)
-    IF ~handlingError THEN
-      handlingError := TRUE;
-      (* let's contaminate Pid 0's calltrace stack, it will be reset *)
-      (* anyway upon Processes.Go *)
-      SysCtrl.SetCpPid(0);
-      IF (errorNo IN ForceRestart) OR Procs.ForceRestart(pid) THEN
-        (* logging *)
-        le.event := Log.System;
-        le.cause := Log.SysRestart;
-        SysCtrl.GetReg(le.more0);
-        SysCtrl.GetError(le.more1, addr);
-        Log.Put(le);
-        (* actions *)
-        Start.Arm;
-        SysCtrl.SetRestart;
-        resetSystem
-      ELSE
-        (* logging *)
-        le.event := Log.System;
-        le.cause := Log.SysReset;
-        SysCtrl.GetReg(le.more0);
-        SysCtrl.GetError(le.more1, addr);
-        Log.Put(le);
-        (* actions *)
-        Procs.Recover;
-        Procs.OnError(pid);
-        SysCtrl.SetNoRestart;
-        Start.Disarm;
-        handlingError := FALSE;
-        Procs.Go;
-
-        (* we'll not return here, but... *)
-        (* logging *)
-        le.event := Log.System;
-        le.cause := Log.SysFault;
-        Log.Put(le);
-        (* actions *)
-        Start.Arm;
-        SysCtrl.SetRestart;
-        resetSystem
-      END
-    ELSE
-      (* error in error handling *)
+    (* let's contaminate Pid 0's calltrace stack, it will be reset *)
+    (* anyway upon Processes.Go *)
+    (* note: no error-in-error handling protection, as all errors are disabled *)
+    (* hence this code better be correct *)
+    SysCtrl.SetCpPid(0);
+    IF (errorNo IN ForceRestart) OR Procs.ForceRestart(pid) THEN
       (* logging *)
       le.event := Log.System;
-      le.cause := Log.SysErrorInError;
+      le.cause := Log.SysRestart;
+      SysCtrl.GetReg(le.more0);
+      SysCtrl.GetError(le.more1, addr);
+      Log.Put(le);
+      (* actions *)
+      Start.Arm;
+      SysCtrl.SetRestart;
+      resetSystem
+    ELSE
+      (* logging *)
+      le.event := Log.System;
+      le.cause := Log.SysReset;
+      SysCtrl.GetReg(le.more0);
+      SysCtrl.GetError(le.more1, addr);
+      Log.Put(le);
+      (* actions *)
+      Procs.Recover;
+      Procs.OnError(pid);
+      SysCtrl.SetNoRestart;
+      Start.Disarm;
+      SysCtrl.SetErrorDone; (* enable errors again *)
+      Procs.Go;
+
+      (* we'll not return here, but... *)
+      (* logging *)
+      le.event := Log.System;
+      le.cause := Log.SysFault;
       Log.Put(le);
       (* actions *)
       Start.Arm;
@@ -206,9 +196,7 @@ MODULE Errors;
     IF trapNo = 0 THEN (* execute NEW *)
       Kernel.New(a, b)
     ELSE (* error trap *)
-      SysCtrl.SetError(trapNo, adr);
-      SysCtrl.SetNoRestart;
-      resetSystem (* will arrive at 'reset' above via boot loader *)
+      SysCtrl.SetError(trapNo, adr) (* trigger system reset via hardware *)
     END
   END trap;
 
@@ -218,8 +206,7 @@ MODULE Errors;
     Kernel.Install(SYSTEM.ADR(trap), 20H);
     Kernel.Install(SYSTEM.ADR(reset), 0H);
     SysCtrl.SetNoRestart; (* all resets go through reset proc above *)
-    ForceRestart := {StackOverflowLim};
-    handlingError := FALSE
+    ForceRestart := {StackOverflowLim}
   END Init;
 
 END Errors.
