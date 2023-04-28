@@ -16,6 +16,8 @@ MODULE ConsoleB;
     Dev*: RS232dev.Device;
 
 BEGIN
-  NEW(Dev); RS232dev.Init(Dev, RS232dev.Dev0); (* default conditions used *)
+  NEW(Dev); ASSERT(Dev # NIL);
+  RS232dev.Init(Dev, RS232dev.Dev0);
+  RS232dev.SetCond(Dev, RS232dev.RXBNE, RS232dev.TXBNF); (* set to buffered use *)
   Texts.OpenWriter(C, Dev, RS232.PutChar)
 END ConsoleB.

@@ -15,7 +15,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 18.5.2013 / CB 6.11.2016 *)
   2023-04: * Remove process run-time data from System.Watch
 **)
 
-  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Texts, Oberon, Console := ConsoleC, Procs := Processes, GC;
+  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Texts, Oberon, Console := ConsoleB, Procs := Processes, GC;
 
   VAR
     W: Texts.Writer;

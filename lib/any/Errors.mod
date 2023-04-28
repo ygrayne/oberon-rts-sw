@@ -11,7 +11,7 @@
 MODULE Errors;
 
   IMPORT
-    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start, Calltrace, CalltraceView, Console := ConsoleB, Texts;
+    SYSTEM, Kernel, Modules, SysCtrl, Procs := Processes, Log, Start, Calltrace, CalltraceView;
 
   CONST
     (* traps *)
@@ -34,7 +34,6 @@ MODULE Errors;
     ForceRestart*: SET; (* system will always be restarted upon these errors *)
     le: Log.Entry;
     handlingError: BOOLEAN;
-    W: Texts.Writer;
 
   PROCEDURE SetForceRestart*(errors: SET);
   BEGIN
@@ -223,6 +222,4 @@ MODULE Errors;
     handlingError := FALSE
   END Init;
 
-BEGIN
-  W := Console.C
 END Errors.
