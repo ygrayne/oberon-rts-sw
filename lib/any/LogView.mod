@@ -7,7 +7,7 @@
 
 MODULE LogView;
 
-  IMPORT Log, Texts, Console := ConsoleB, RS232, SysCtrl, Procs := Processes;
+  IMPORT Log, Texts, Console := ConsoleB, RS232, Procs := Processes, Errors;
 
   VAR
     W: Texts.Writer;
@@ -15,31 +15,47 @@ MODULE LogView;
   PROCEDURE reportAbort(le: Log.Entry);
   BEGIN
     Texts.Write(W, " "); Texts.WriteClock(W, le.when);
-    Texts.WriteString(W, " ABORT");
-    IF le.cause = SysCtrl.Watchdog THEN
+    Texts.WriteString(W, " ABORT:");
+    IF le.cause = Errors.Watchdog THEN
       Texts.WriteString(W, " WDOG")
-    ELSIF le.cause = SysCtrl.Kill THEN
+    ELSIF le.cause = Errors.Kill THEN
       Texts.WriteString(W, " KILLB")
-    ELSIF le.cause = SysCtrl.StackOverflowLim THEN
+    ELSIF le.cause = Errors.StackOverflowLim THEN
       Texts.WriteString(W, " SOFL")
-    ELSIF le.cause = SysCtrl.StackOverflowHot THEN
+    ELSIF le.cause = Errors.StackOverflowHot THEN
       Texts.WriteString(W, " SOFH")
     ELSE
       Texts.WriteString(W, " ???")
     END;
-    Texts.WriteString(W, " proc "); Texts.WriteString(W, le.name);
+    Texts.WriteString(W, " in "); Texts.WriteString(W, le.name);
     Texts.WriteString(W, " in "); Texts.WriteString(W, le.str0);
     Texts.WriteString(W, " at"); Texts.WriteHex(W, le.adr0);
     Texts.WriteString(W, " line "); Texts.WriteInt(W, le.more1, 0);
     Texts.WriteLn(W)
   END reportAbort;
 
-
   PROCEDURE reportTrap(le: Log.Entry);
   BEGIN
     Texts.Write(W, " "); Texts.WriteClock(W, le.when);
-    Texts.WriteString(W, " TRAP "); Texts.WriteInt(W, le.cause, 0);
-    Texts.WriteString(W, " proc "); Texts.WriteString(W, le.name);
+    Texts.WriteString(W, " TRAP: "); Texts.WriteInt(W, le.cause, 0);
+    IF le.cause = Errors.ArrayIndex THEN
+      Texts.WriteString(W, " ARRI")
+    ELSIF le.cause = Errors.TypeGuard THEN
+      Texts.WriteString(W, " TYGD")
+    ELSIF le.cause = Errors.CopyOverflow THEN
+      Texts.WriteString(W, " CPOF")
+    ELSIF le.cause = Errors.NilPointer THEN
+      Texts.WriteString(W, " NILP")
+    ELSIF le.cause = Errors.IllegalCall THEN
+      Texts.WriteString(W, " ILCL")
+    ELSIF le.cause = Errors.DivZero THEN
+      Texts.WriteString(W, " DIVZ")
+    ELSIF le.cause = Errors.Assertion THEN
+      Texts.WriteString(W, " ASRT")
+    ELSE
+      Texts.WriteString(W, " ????")
+    END;
+    Texts.WriteString(W, " in "); Texts.WriteString(W, le.name);
     Texts.WriteString(W, " in "); Texts.WriteString(W, le.str0);
     Texts.WriteString(W, " at"); Texts.WriteHex(W, le.adr0);
     Texts.WriteString(W, " pos "); Texts.WriteInt(W, le.more0, 0);

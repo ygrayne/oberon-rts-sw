@@ -193,6 +193,7 @@ MODULE Processes;
   PROCEDURE OnError*(pid: INTEGER);
     VAR i: INTEGER; p0: Process;
   BEGIN
+    cp := NIL; Cp := NIL; queued := {}; (* queue could be inconsistent *)
     i := 1;
     WHILE i < MaxNumProcs DO
       IF procs[i] # NIL THEN
@@ -313,25 +314,18 @@ MODULE Processes;
     Cp := loop;
     SysCtrl.SetCpPid(loopPid);
     REPEAT
-      Watchdog.Reset;
+      (*Watchdog.Reset;*)
       ProcTimers.GetReadyStatus(readyT);
       IF readyT # {} THEN
         LED(0F9H);
         pid := 1;
         WHILE pid < MaxNumProcs DO
           IF pid IN readyT THEN
-            IF procs[pid] # NIL THEN
-              IF procs[pid].state = StateEnabled THEN
-                ASSERT(procs[pid].trigger = TrigSome);
-                slotIn(procs[pid]);
-                ProcTimers.ClearReady(pid)
-              END
-            ELSE
-              (* logging *)
-              le.event := Log.Process;
-              le.cause := Log.ProcNilProcHardware;
-              le.more0 := pid;
-              Log.Put(le)
+            ASSERT(procs[pid] # NIL); (* non existing procs must not get timer signal *)
+            IF procs[pid].state = StateEnabled THEN
+              ASSERT(procs[pid].trigger = TrigSome);
+              slotIn(procs[pid]);
+              ProcTimers.ClearReady(pid)
             END
           END;
           INC(pid)
@@ -339,7 +333,7 @@ MODULE Processes;
       END;
       IF cp # NIL THEN
         LED(0FAH);
-        IF ~cp.watchdog THEN Watchdog.Stop END;
+        (*IF ~cp.watchdog THEN Watchdog.Stop END;*)
         Cp := cp;
         Coroutines.Transfer(loop.cor, cp.cor);
         Cp := loop

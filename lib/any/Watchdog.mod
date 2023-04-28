@@ -33,6 +33,12 @@ MODULE Watchdog;
   END SetTimeout;
 
 
+  PROCEDURE* GetTimeout*(VAR to: INTEGER);
+  BEGIN
+    SYSTEM.GET(IOadr, to)
+  END GetTimeout;
+
+
   PROCEDURE* Stop*;
   BEGIN
     SYSTEM.PUT(IOadr, 0)
