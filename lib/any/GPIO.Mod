@@ -1,4 +1,3 @@
-MODULE GPIO;
 (* =========================================================================
    GPIO - General Purpose Input / Output
 
@@ -19,62 +18,68 @@ MODULE GPIO;
   CONNECTION WITH THE DEALINGS IN OR USE OR PERFORMANCE OF THE SOFTWARE.
   ========================================================================= *)
 
-IMPORT SYSTEM;
+(**
+  2023-04:
+  * add address config from platform module DevAdr
+  * add GetOutputs to read current input/output setting
+  * remove Input and Output CONSTs
+**)
 
-CONST
-  (*I/O addresses*)
-  GPIOAdr = -32;
-  GPOCAdr = -28;
-  Input* = 0;
-  Output* = 1;
+MODULE GPIO;
 
-PROCEDURE Reset*(pin: INTEGER);
-VAR
-  x: SET;
-BEGIN
-  SYSTEM.GET(GPIOAdr, x);
-  x := x - {pin};
-  SYSTEM.PUT(GPIOAdr, x)
-END Reset;
+  IMPORT SYSTEM, DevAdr;
 
+  CONST
+    GPIOAdr = DevAdr.GPIOAdr;
+    GPOCAdr = GPIOAdr + 4;
 
-PROCEDURE Set*(pin: INTEGER);
-VAR
-  x: SET;
-BEGIN
-  SYSTEM.GET(GPIOAdr, x);
-  x := x + {pin};
-  SYSTEM.PUT(GPIOAdr, x)
-END Set;
+  PROCEDURE Reset*(pin: INTEGER);
+  VAR
+    x: SET;
+  BEGIN
+    SYSTEM.GET(GPIOAdr, x);
+    x := x - {pin};
+    SYSTEM.PUT(GPIOAdr, x)
+  END Reset;
 
 
-PROCEDURE Store*(pins: SET);
-BEGIN
-  SYSTEM.PUT(GPIOAdr, pins)
-END Store;
+  PROCEDURE Set*(pin: INTEGER);
+  VAR
+    x: SET;
+  BEGIN
+    SYSTEM.GET(GPIOAdr, x);
+    x := x + {pin};
+    SYSTEM.PUT(GPIOAdr, x)
+  END Set;
 
 
-PROCEDURE Load*(VAR pins: SET);
-BEGIN
-  SYSTEM.GET(GPIOAdr, pins)
-END Load;
+  PROCEDURE Store*(pins: SET);
+  BEGIN
+    SYSTEM.PUT(GPIOAdr, pins)
+  END Store;
 
 
-PROCEDURE Get*(pin: INTEGER; VAR x: BOOLEAN);
-BEGIN
-  x := SYSTEM.BIT(GPIOAdr, pin)
-END Get;
+  PROCEDURE Load*(VAR pins: SET);
+  BEGIN
+    SYSTEM.GET(GPIOAdr, pins)
+  END Load;
 
 
-PROCEDURE SetOutputs*(pins: SET);
-BEGIN
-  SYSTEM.PUT(GPOCAdr, pins)
-END SetOutputs;
+  PROCEDURE Get*(pin: INTEGER; VAR x: BOOLEAN);
+  BEGIN
+    x := SYSTEM.BIT(GPIOAdr, pin)
+  END Get;
+
+
+  PROCEDURE SetOutputs*(pins: SET);
+  BEGIN
+    SYSTEM.PUT(GPOCAdr, pins)
+  END SetOutputs;
+
+
+  PROCEDURE GetOutputs*(VAR pins: SET);
+  BEGIN
+    SYSTEM.GET(GPOCAdr, pins)
+  END GetOutputs;
 
 END GPIO.
-
-
-
-
-
-

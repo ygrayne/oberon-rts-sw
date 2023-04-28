@@ -12,7 +12,7 @@ MODULE DevAdr;
   CONST
     (* LSB -- leds, switches, buttons *)
     (* one address *)
-    (* note: fixed in the compiler for LED procedures *)
+    (* note: fixed in the compiler for LED procedure *)
     LsbAdr* = -60;
 
     (* millisecond timer *)
@@ -35,7 +35,7 @@ MODULE DevAdr;
     (* one address *)
     StartAdr* = -188;
 
-    (* system ctrl register *)
+    (* system ctrl and status register *)
     (* two addresses *)
     (* adapt BootLoad.mod if you change this *)
     SysCtrlRegAdr* = -72;
@@ -57,5 +57,9 @@ MODULE DevAdr;
     (* SPI devices *)
     (* two addresses *)
     SPIdev0DataAdr* = -48;
+
+    (* GPIO *)
+    (* two addresses *)
+    GPIOAdr* = -32;
 
 END DevAdr.
