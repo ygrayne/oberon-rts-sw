@@ -93,6 +93,7 @@ MODULE SysCtrl;
   END SetErrorDone;
 
   PROCEDURE SetError*(errorNo, addr: INTEGER);
+  (* triggers a hw-reset *)
   BEGIN
     SYSTEM.PUT(SysCtrlErrAdr, LSL(addr, ErrAddr0) + errorNo);
   END SetError;
