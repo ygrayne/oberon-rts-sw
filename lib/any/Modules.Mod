@@ -31,6 +31,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
     (* Check *)
     ResModNameNotValid = 1;
 
+    LEDbase = 0A0H;
+
 
   TYPE Module* = POINTER TO ModDesc;
     Command* = PROCEDURE;
@@ -272,9 +274,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
 
   PROCEDURE Init*;
   BEGIN
-    LED(0E2H);
+    LED(LEDbase + 02H);
     Files.Init;
-    LED(0E3H);
+    LED(LEDbase + 03H);
     MTOrg := SYSTEM.REG(MT);
     SYSTEM.GET(16, AllocPtr);
     SYSTEM.GET(20, root);
@@ -283,7 +285,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
   END Init;
 
 BEGIN
-  LED(0E1H); Init; LED(0E4H);
+  LED(LEDbase + 01H);
+  Init;
+  LED(LEDbase + 04H);
   Load("Oberon", M);
   LED(res); REPEAT UNTIL FALSE  (*only if load fails*)
 END Modules.

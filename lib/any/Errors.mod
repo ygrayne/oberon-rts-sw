@@ -166,7 +166,6 @@ MODULE Errors;
       SysCtrl.GetError(le.more1, addr);
       Log.Put(le);
       (* actions *)
-      Procs.Recover;
       Procs.OnError(pid);
       SysCtrl.SetNoRestart;
       Start.Disarm;
