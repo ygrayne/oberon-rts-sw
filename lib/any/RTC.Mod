@@ -4,7 +4,7 @@
   Based on RTC.mod of the EPO v8.0 distribution.
   See copyright and liability text at the end of this file.
   --
-  2021 Gray, gray@grayraven.org
+  2021 - 2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences
   --
   Changes:
@@ -29,7 +29,7 @@ MODULE RTC;
     SRAMAdr* = 18H;
     SRAMDataAdr* = 19H;
 
-    SPIctrl = SPI.FSTE;  (* fast *)
+    SPIctrl = SPI.FSTE + SPI.CPOL + SPI.CPHA;  (* fast, cpol = 1, cpha = 1 *)
     D8 = SPI.D8;
 
   VAR
@@ -196,6 +196,7 @@ MODULE RTC;
 
   PROCEDURE Install*(spiNo, cs: INTEGER);
   BEGIN
+    ASSERT(cs IN {0..2});
     IF ~Installed THEN
       SPIdev.Init(spi, spiNo);
       SPI.SetControl(spi, SPIctrl + {cs});

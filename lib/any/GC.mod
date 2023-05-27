@@ -18,6 +18,7 @@ MODULE GC;
     StackSize = 512;
     StackHotSize = 0;
     GClimitDiv = 4; (* kick in when only 1/4 of heap space is left *)
+    LEDbase = 05H;
 
   VAR
     gc: Procs.Process;
@@ -31,14 +32,14 @@ MODULE GC;
   BEGIN
     alloc := Kernel.allocated;
     time := Kernel.Time();
-    mod := Modules.root; LED(21H);
+    mod := Modules.root; LED(LEDbase + 01H);
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END;
       mod := mod.next
     END;
-    LED(23H);
-    Files.RestoreList; LED(27H);
-    Kernel.Scan; LED(20H);
+    LED(LEDbase + 03H);
+    Files.RestoreList; LED(LEDbase + 07H);
+    Kernel.Scan; LED(LEDbase + 0H);
     le.event := Log.System; le.cause := Log.SysCollect; le.more0 := Kernel.Time() - time;
     le.more1 := alloc; le.more2 := Kernel.allocated;
     Log.Put(le)

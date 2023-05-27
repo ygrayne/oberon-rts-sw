@@ -17,6 +17,7 @@ MODULE Oberon;
 
   CONST
     SP = 14;
+    LEDbase = 0B0H;
 
     LoopStackSize = 512;
     LoopStackHotSize = 32;
@@ -89,12 +90,12 @@ BEGIN
   (* the temp trap handler is still installed *)
   (* no abort interrupts and abort handler are installed *)
   (* running with SP down from stackOrg *)
-  LED(0F1H);
+  LED(LEDbase + 01H);
   Par := Cmds.Par; Call := Cmds.Call; (* EPO command handling compatibility *)
 
   RTC.Install(RTCspiDevice, RTCchipselect); (* nice for logging *)
 
-  LED(0F2H);
+  LED(LEDbase + 02H);
   logRestart;
   logMemData;
 
@@ -102,26 +103,26 @@ BEGIN
   (* LoopStackSize bytes *)
   stackAddr := Kernel.stackOrg - LoopStackSize;
   Procs.Install(stackAddr, LoopStackSize, LoopStackHotSize);
-  LED(0F3H);
+  LED(LEDbase + 03H);
 
   Errors.Init;
-  LED(0F4H);
+  LED(LEDbase + 04H);
 
   GC.Init;
-  LED(0F5H);
+  LED(LEDbase + 05H);
 
   Audit.Init;
-  LED(0F6H);
+  LED(LEDbase + 06H);
 
   (* Cmds will use the part of the original stack below the loop *)
   stackAddr := Kernel.stackOrg - Kernel.stackSize;
   stackSize := Kernel.stackOrg - LoopStackSize - stackAddr;
   Cmds.Init(stackAddr, stackSize, CmdsStackHotSize);
-  LED(0F7H);
+  LED(LEDbase + 07H);
 
   (* this runs still in the original stack *)
   GC.Collect; (* make sure we have all heap space available for startup loading by Cmds *)
-  LED(0F8H);
+  LED(LEDbase + 08H);
   Procs.Go; (* start loop/scanner *)
   (* we'll not return here *)
 END Oberon.

@@ -1,7 +1,7 @@
 (**
   Unbuffered SPI device driver
   --
-  2020 - 2023 Gray, gray@grayraven.org
+  (c) 2020 - 2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences
 **)
 
@@ -17,18 +17,21 @@ MODULE SPIu;
     (* control *)
     FSTE* = {SPIdev.FSTE};
     MSBF* = {SPIdev.MSBF};
+    CPOL* = {SPIdev.CPOLC};
+    CPHA* = {SPIdev.CPHAC};
     D8*  = {};
     D16* = {SPIdev.D16};
     D32* = {SPIdev.D32};
     Dn   = D8 + D16 + D32;
     CON* = {SPIdev.CON};
     COFF* = {};
+    DEFAULT* = {};  (* default SPI controls as wired in the FPGA *)
 
 
   PROCEDURE* SetControl*(dev: SPIdev.Device; ctrlReg: SET);
-  (* Set CS [2:0], FSTE, MSBF *)
+  (* Set CS [2:0], FSTE, MSBF, CPOL, CPHA *)
   BEGIN
-    dev.ctrlReg := ctrlReg - Dn - CON (* these bits are being set by put/get procs below *)
+    dev.ctrlReg := ctrlReg - Dn - CON (* these bits are set by 'Select' and 'Deselect' *)
   END SetControl;
 
 
@@ -39,7 +42,7 @@ MODULE SPIu;
   The status register remains set until the transmission/reception is terminated
   using 'Deselect', across one ore more 'Put' or 'Get' operations. *)
   BEGIN
-    ASSERT(ctrl - Dn - CON = {});
+    ASSERT(ctrl - Dn - CON = {}); (* only set these bits here *)
     SYSTEM.PUT(dev.statusAdr, dev.ctrlReg + ctrl)
   END Select;
 
@@ -47,8 +50,8 @@ MODULE SPIu;
   PROCEDURE* Deselect*(dev: SPIdev.Device; ctrl: SET);
   (* Deselect the SPI device, ending a transmission *)
   BEGIN
-    ASSERT(ctrl - CON = {});
-    SYSTEM.PUT(dev.statusAdr, ctrl)
+    ASSERT(ctrl - CON = {}); (* only set this bit here *)
+    SYSTEM.PUT(dev.statusAdr, DEFAULT + ctrl) (* reset device defaults *)
   END Deselect;
 
 

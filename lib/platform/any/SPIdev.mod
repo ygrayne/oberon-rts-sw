@@ -4,7 +4,7 @@
   As currently created and wired:
   * SPI Dev0: extended SPI, unbuffered
   --
-  2020 - 2023 Gray, gray@grayraven.org
+  (c) 2020 - 2023 Gray, gray@grayraven.org
   https://oberon-rts.org/licences
 **)
 
@@ -27,6 +27,10 @@ MODULE SPIdev;
     RXBF*  = 2;       (* Rx buffer full *)
     TXBE*  = 3;       (* Tx buffer empty *)
 
+    (** all devices *)
+    CPOLS* = 8;
+    CPHAS* = 9;
+
     (*** CONTROL bits: write to status addr *)
     (** unbuffered and buffered devices *)
     (* Chip Select: wired is 0, range is 0..2 *)
@@ -36,6 +40,8 @@ MODULE SPIdev;
     D16*  = 5;    (* transmitted data = 16 bits *)
     MSBF* = 6;    (* send MSByte first *)
     CON*  = 8;    (* aux control bit *) (* not yet implemented on platform *)
+    CPOLC* = 12;  (* serial clock polarity *)
+    CPHAC* = 13;  (* serial clock phase *)
 
     (** buffered devices *)
     NORX* = 7;    (* don't receive data into Rx buffer *)
@@ -57,7 +63,7 @@ MODULE SPIdev;
     Device* = POINTER TO DeviceDesc;
     DeviceDesc* = RECORD
       dataAdr*, statusAdr*: INTEGER;
-      ctrlReg*: SET;
+      ctrlReg*: SET
     END;
 
   PROCEDURE Init*(dev: Device; deviceNo: INTEGER);

@@ -20,6 +20,7 @@ MODULE Processes;
     ProcNums = {0 .. 31};
     NameLen* = 4;
     NumTimers* = 8;
+    LEDbase = 010H;
 
     (* process timers in milliseconds *)
     P0 = 5; P1 = 10; P2 = 20; P3 = 50; P4 = 100; P5 = 200; P6 = 500; P7 = 1000;
@@ -77,7 +78,6 @@ MODULE Processes;
     loopPid : INTEGER;
     loopStackTop, loopStackAddr, loopStackSize, loopStackHotSize: INTEGER;
     le: Log.Entry;
-
 
   (* manage the ready queue *)
 
@@ -194,7 +194,8 @@ MODULE Processes;
     VAR i: INTEGER; p0: Process;
   BEGIN
     cp := NIL; Cp := NIL; queued := {}; (* queue could be inconsistent *)
-    i := 1;
+    ProcTimers.Init(P0, P1, P2, P3, P4, P5, P6, P7);
+    i := 1; (* scheduler is handled separatedly via 'Go' *)
     WHILE i < MaxNumProcs DO
       IF procs[i] # NIL THEN
         p0 := procs[i];
@@ -279,7 +280,9 @@ MODULE Processes;
 
   PROCEDURE Next*;
   BEGIN
+    (*
     slotOut(Cp);
+    *)
     IF Cp.trigger = TrigNone THEN
       slotIn(Cp)
     END;
@@ -290,7 +293,9 @@ MODULE Processes;
   PROCEDURE SuspendMe*;
   BEGIN
     Cp.state := StateSuspended;
+    (*
     slotOut(Cp);
+    *)
     Coroutines.Transfer(Cp.cor, loop.cor)
   END SuspendMe;
 
@@ -310,14 +315,14 @@ MODULE Processes;
   PROCEDURE loopc;
     VAR pid: INTEGER; readyT: SET;
   BEGIN
-    LED(0F8H);
+    LED(LEDbase + 03H);
     Cp := loop;
     SysCtrl.SetCpPid(loopPid);
     REPEAT
       (*Watchdog.Reset;*)
       ProcTimers.GetReadyStatus(readyT);
       IF readyT # {} THEN
-        LED(0F9H);
+        LED(LEDbase + 04H);
         pid := 1;
         WHILE pid < MaxNumProcs DO
           IF pid IN readyT THEN
@@ -332,10 +337,11 @@ MODULE Processes;
         END
       END;
       IF cp # NIL THEN
-        LED(0FAH);
+        LED(LEDbase + 05H);
         (*IF ~cp.watchdog THEN Watchdog.Stop END;*)
         Cp := cp;
-        Coroutines.Transfer(loop.cor, cp.cor);
+        cp := cp.next; EXCL(queued, Cp.pid); (* slot out Cp *)
+        Coroutines.Transfer(loop.cor, Cp.cor);
         Cp := loop
       END
     UNTIL FALSE
@@ -347,12 +353,12 @@ MODULE Processes;
     CONST SP = 14;
     VAR jump: Coroutines.Coroutine;
   BEGIN
-    LED(0F9H);
+    LED(LEDbase + 01H);
     (* Coroutines.Reset will prepare top of stack for coroutine, let's be out of the way *)
     SYSTEM.LDREG(SP, loopStackTop - 128);
     NEW(jump);
     Coroutines.Reset(loop.cor);
-    LED(0FAH);
+    LED(LEDbase + 02H);
     Coroutines.Transfer(jump, loop.cor)
   END Go;
 
@@ -373,9 +379,9 @@ MODULE Processes;
       pd.name := p0.name;
       pd.trigger := p0.trigger;
       pd.period := p0.period;
-      pd.stAdr := p0.cor.stAdr;
+      pd.stAdr := p0.cor.stLimit;
       pd.stSize := p0.cor.stSize;
-      pd.stHotSize := p0.cor.stHotLimit - p0.cor.stAdr;
+      pd.stHotSize := p0.cor.stHotLimit - p0.cor.stLimit;
       pd.stMin := p0.cor.stMin;
     END
   END GetProcData;
@@ -423,8 +429,7 @@ MODULE Processes;
   PROCEDURE Recover*;
   (* note: Processes.Go will re-init the loop *)
   BEGIN
-    cp := NIL; Cp := NIL;
-    queued := {};
+    cp := NIL; Cp := NIL; queued := {};
     ProcTimers.Init(P0, P1, P2, P3, P4, P5, P6, P7)
   END Recover;
 

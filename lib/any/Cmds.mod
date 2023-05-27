@@ -11,7 +11,9 @@
   The processes' stack takes over most of the original stack space after loading.
   The loop/scanner will only use the top of the stack space, see KoopStackSize in the Processes module.
   --
-  2020 - 2023 by Gray, gray@grayraven.org
+  Base: (Embedded) Project Oberon
+  --
+  (c) 2020 - 2023 by Gray, gray@grayraven.org
   https://oberon-rts.org/licences
 **)
 
@@ -22,6 +24,7 @@ MODULE Cmds;
   CONST
     Prio = 3;
     Name = "cmd";
+    LEDbase = 060H;
 
   TYPE
     ParRef* = POINTER TO ParDesc;
@@ -124,15 +127,15 @@ MODULE Cmds;
       IF RS232.GetAvailable(Console.Dev, ch) THEN
         IF ch = REC THEN
           REPEAT
-            LED(09H);
+            LED(LEDbase + 01H);
             Upload.Run;
             cnt := 1000000; (* workaround for upload timeout issue with multiple files *)
             REPEAT
               valid := RS232.GetAvailable(Console.Dev, ch) & (ch = REC); DEC(cnt);
-              LED(0BH);
+              LED(LEDbase + 02H);
             UNTIL valid OR (cnt = 0);
           UNTIL cnt = 0;
-          LED(0FH);
+          LED(LEDbase + 03H);
         ELSE
           Par.text.string[0] := ch;
           getCommand(1);
