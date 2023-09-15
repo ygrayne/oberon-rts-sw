@@ -34,7 +34,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
     LEDbase = 0A0H;
 
 
-  TYPE Module* = POINTER TO ModDesc;
+  TYPE
+    Module* = POINTER TO ModDesc;
     Command* = PROCEDURE;
     ModuleName* = ARRAY 32 OF CHAR;
 
@@ -43,17 +44,17 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
       next*: Module;
       key*, num*, size*, refcnt*: INTEGER;
       data*, code*, imp*, cmd*, ent*, ptr*, unused: INTEGER  (*addresses*)
-    END ;
+    END;
 
-  VAR root*, M: Module;
+  VAR
+    root*, M: Module;
     MTOrg*, AllocPtr*, res*: INTEGER;
     importing*, imported*, errName*: ModuleName;
     limit: INTEGER;
 
 
   PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
-    VAR i: INTEGER;
-      filename: ModuleName;
+    VAR i: INTEGER; filename: ModuleName;
   BEGIN i := 0;
     WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
     filename[i] := "."; filename[i+1] := "r"; filename[i+2] := "s"; filename[i+3] := "c"; filename[i+4] := 0X;
@@ -82,7 +83,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
     (*search module in list; if not found, load module.
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
       res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
-    VAR mod, impmod: Module;
+    VAR
+      mod, impmod: Module;
       i, n, key, impkey, mno, nofimps, size: INTEGER;
       p, v, w: INTEGER;  (*addresses*)
       ch: CHAR;
@@ -137,7 +139,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
             mod.next := root; root := mod
           ELSE error(ResNoMem, name1)
           END
-        ELSE (*fill hole*) p := SYSTEM.VAL(INTEGER, mod)
+        ELSE (*fill hole*)
+          p := SYSTEM.VAL(INTEGER, mod)
         END
       END ;
       IF res = 0 THEN (*read file*)
@@ -218,7 +221,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
           mno := inst DIV 1000000H MOD 10H;
           vno := inst DIV 1000H MOD 1000H;
           disp := inst MOD 1000H;
-          IF mno = 0 THEN (*global*) inst := mod.data + vno
+          IF mno = 0 THEN (*global*)
+            inst := mod.data + vno
           ELSE (*import*)
             SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
             SYSTEM.GET(impmod.ent + vno*4, offset);
@@ -229,7 +233,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
         DebugOut.WriteLine("bb  ", name, "", -1);  (* diagnostic output *)
         body;   (*initialize module*)
         DebugOut.WriteLine("be  ", name, "", -1);  (* diagnostic output *)
-      ELSIF res > 3 THEN importing := name;
+      ELSIF res > 3 THEN
+        importing := name;
         WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END
       END
     END ;
@@ -237,7 +242,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
   END Load;
 
   PROCEDURE ThisCommand*(mod: Module; name: ARRAY OF CHAR): Command;
-    VAR k, adr, w: INTEGER; ch: CHAR;
+    VAR
+      k, adr, w: INTEGER; ch: CHAR;
       s: ARRAY 32 OF CHAR;
   BEGIN res := ResCmdUnknown; w := 0;
     IF mod # NIL THEN
@@ -267,7 +273,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
             AllocPtr := SYSTEM.VAL(INTEGER, root); root := root.next
           END
         END
-      ELSE res := ResRefCntNotZero
+      ELSE
+        res := ResRefCntNotZero
       END
     END
   END Free;
@@ -289,5 +296,6 @@ BEGIN
   Init;
   LED(LEDbase + 04H);
   Load("Oberon", M);
-  LED(res); REPEAT UNTIL FALSE  (*only if load fails*)
+  LED(res);
+  REPEAT UNTIL FALSE  (*only if load fails*)
 END Modules.

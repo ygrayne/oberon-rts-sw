@@ -3,6 +3,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   (* CFB 11.7.2020 SPIWORD parameter. GC fixes. *)
 
   (* gray 2021-04: stack size is a CONST *)
+  (* gray 2023-06: read stack size from mem addr 4 *)
 
   IMPORT SYSTEM;
 
@@ -11,8 +12,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     CARD0 = 1; SPIFAST = 8; SPIWORD = 16;
     FSoffset = 80000H; (*256MB in 512-byte blocks*)
     mapsize = 10000H; (*1K sectors, 64MB*)
-
-    StackSize = 4000H; (* 16k *) (* gray *)
 
   TYPE Sector* = ARRAY SectorLength OF BYTE;
     ClockProc* = PROCEDURE (): INTEGER;
@@ -297,7 +296,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   PROCEDURE Init*;
   BEGIN
     Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap*)
-    SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg); stackSize := StackSize; (* gray *)
+    SYSTEM.GET(12, MemLim);
+    SYSTEM.GET(24, heapOrg);
+    SYSTEM.GET(4, stackSize); (* gray *)
     stackOrg := heapOrg; heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
