@@ -18,7 +18,7 @@ MODULE SRAMcvsk;
 
   PROCEDURE Put*(addr, data: INTEGER);
   BEGIN
-    REPEAT UNTIL SYSTEM.BIT(CtrlAdr, Ready);
+    (*REPEAT UNTIL SYSTEM.BIT(CtrlAdr, Ready);*)
     SYSTEM.PUT(CtrlAdr, addr);
     SYSTEM.PUT(DataAdr, data)
   END Put;
@@ -35,9 +35,9 @@ MODULE SRAMcvsk;
 
   PROCEDURE Get*(addr: INTEGER; VAR data: INTEGER);
   BEGIN
-    REPEAT UNTIL SYSTEM.BIT(CtrlAdr, Ready);
-    SYSTEM.PUT(CtrlAdr, ReadCmd + addr);
-    REPEAT UNTIL SYSTEM.BIT(CtrlAdr, Ready);
+    (*REPEAT UNTIL SYSTEM.BIT(CtrlAdr, Ready);*)
+    SYSTEM.PUT(CtrlAdr, addr);
+    (*REPEAT UNTIL SYSTEM.BIT(CtrlAdr, Ready);*)
     SYSTEM.GET(DataAdr, data)
   END Get;
 
