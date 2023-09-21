@@ -22,6 +22,7 @@ Here is the sister repo for the corresponding hardware: [oberon-rts-hw](https://
   * millisecond timer
   * RS232 (buffered, unbuffered)
   * SPI
+  * I2C
   * GPIO
 * (re-) start tables
 * all activities as processes
@@ -35,7 +36,6 @@ Here is the sister repo for the corresponding hardware: [oberon-rts-hw](https://
 
 ## Next Up
 
-* I2C support
 * extend processes API
 * critical region protection
 * process scheduling based on hardware events
